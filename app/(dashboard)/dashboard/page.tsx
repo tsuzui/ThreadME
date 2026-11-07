@@ -13,6 +13,7 @@ import {
   Layers,
 } from 'lucide-react'
 import { formatDateWIB } from '@/lib/utils'
+import { DashboardPreviewAction } from './preview-action'
 
 export const dynamic = 'force-dynamic'
 
@@ -89,11 +90,12 @@ export default async function DashboardPage() {
             Ikhtisar Otomatisasi
           </h1>
           <p className="mt-1 text-sm text-muted-foreground">
-            Status mesin konten harian Threads (Target publikasi 19:00 WIB).
+            Status mesin konten harian Threads (Target rilis {settings?.posting_time ? `${settings.posting_time.slice(0, 5)} WIB` : '19:00 WIB'}).
           </p>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2.5">
+          <DashboardPreviewAction />
           <span
             className={`inline-flex items-center gap-2 rounded-xl px-3.5 py-1.5 text-xs font-semibold ${
               automationActive

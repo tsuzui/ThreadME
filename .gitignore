@@ -40,3 +40,6 @@ next-env.d.ts
 # supabase local dev
 .supabase/
 supabase/.temp
+
+# local testing & tools
+.playwright-mcp/
