@@ -6,14 +6,24 @@ import {
   CheckCircle2,
   Clock,
   Sparkles,
-  AlertCircle,
   FileText,
   ImageIcon,
   Send,
-  Layers,
+  Wifi,
+  WifiOff,
+  AlertTriangle,
+  TrendingUp,
+  Eye,
+  Heart,
+  MessageCircle,
+  Repeat,
+  Quote,
+  ShieldAlert,
 } from 'lucide-react'
+import Link from 'next/link'
 import { formatDateWIB } from '@/lib/utils'
 import { DashboardPreviewAction } from './preview-action'
+import { getThreadsInsights } from '@/lib/threads/insights'
 
 export const dynamic = 'force-dynamic'
 
@@ -25,13 +35,16 @@ export default async function DashboardPage() {
   const supabase = await createClient()
 
   const firstDayOfMonth = `${new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Jakarta', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date()).slice(0, 7)}-01T00:00:00+07:00`
-  const [settingsResult, publishedResult, readyResult, countResult, latestResult, runResult] = await Promise.all([
+  const [settingsResult, publishedResult, readyResult, countResult, latestResult, runResult, accountResult, heartbeatResult, insights] = await Promise.all([
     supabase.from('app_settings').select('*').eq('singleton', true).single(),
     supabase.from('content_posts').select('*').eq('status', 'published').order('published_at', { ascending: false }).limit(1).maybeSingle(),
     supabase.from('content_posts').select('*').in('status', ['ready', 'generating']).order('scheduled_for', { ascending: true }).limit(1).maybeSingle(),
     supabase.from('content_posts').select('*', { count: 'exact', head: true }).eq('status', 'published').gte('published_at', firstDayOfMonth),
     supabase.from('content_posts').select('*').order('created_at', { ascending: false }).limit(1).maybeSingle(),
     supabase.from('automation_runs').select('*').order('started_at', { ascending: false }).limit(1).maybeSingle(),
+    supabase.from('social_accounts').select('username, is_active, token_expires_at, granted_scopes').eq('is_active', true).maybeSingle(),
+    supabase.from('system_logs').select('created_at').eq('event', 'automation_heartbeat').order('created_at', { ascending: false }).limit(1).maybeSingle(),
+    getThreadsInsights().catch(() => ({ status: 'error' as const, message: 'Tidak dapat memuat insight saat ini.' })),
   ])
   const settings = settingsResult.data as AppSettings | null
   const lastPublishedPost = publishedResult.data as ContentPost | null
@@ -39,8 +52,24 @@ export default async function DashboardPage() {
   const monthlyPublishedCount = countResult.count
   const latestPost = latestResult.data as ContentPost | null
   const latestRun = runResult.data as AutomationRun | null
+  const account = accountResult.data as { username: string | null; is_active: boolean; token_expires_at: string | null; granted_scopes: string[] } | null
+  const heartbeat = heartbeatResult.data as { created_at: string } | null
 
   const automationActive = settings?.automation_enabled ?? false
+  const publishLive = process.env.THREADS_PUBLISH_MODE === 'live'
+  const tokenExpired = account?.token_expires_at ? Date.parse(account.token_expires_at) <= Date.now() : true
+  const heartbeatFresh = heartbeat?.created_at ? Date.now() - Date.parse(heartbeat.created_at) < 5 * 60_000 : false
+
+  const dataUnavailable = [settingsResult, publishedResult, readyResult, countResult, latestResult, runResult, accountResult, heartbeatResult].some(result => result.error)
+  if (dataUnavailable) {
+    return (
+      <div className="space-y-4">
+        <h1 className="text-2xl font-bold">Ikhtisar Otomatisasi</h1>
+        <p role="alert" className="text-sm text-destructive">Status dashboard tidak tersedia karena sebagian data gagal dimuat. Muat ulang halaman untuk mencoba lagi.</p>
+        <Link href="/dashboard" className="inline-block text-sm text-primary underline">Muat ulang dashboard</Link>
+      </div>
+    )
+  }
 
   return (
     <div className="space-y-8">
@@ -127,7 +156,7 @@ export default async function DashboardPage() {
                   Belum ada antrean konten
                 </div>
                 <p className="mt-1 text-xs text-muted-foreground">
-                  Akan dibuat otomatis pada siklus generasi 18:40 WIB.
+                  Akan dibuat otomatis pada siklus generasi {settings?.generation_time ? `${settings.generation_time.slice(0, 5)} WIB` : '18:40 WIB'}.
                 </p>
               </div>
             )}
@@ -179,7 +208,7 @@ export default async function DashboardPage() {
           </div>
           <div className="mt-4">
             <div className="text-2xl font-bold text-foreground">
-              {monthlyPublishedCount ?? 0} <span className="text-sm font-normal text-muted-foreground">post</span>
+              {countResult.error ? 'N/A' : (monthlyPublishedCount ?? 0)} <span className="text-sm font-normal text-muted-foreground">post</span>
             </div>
             <p className="mt-1 text-xs text-muted-foreground">
               Target ritme: 1 post per hari kalender Asia/Jakarta.
@@ -223,7 +252,7 @@ export default async function DashboardPage() {
                   Belum ada draf konten
                 </div>
                 <p className="mt-1 text-xs text-muted-foreground">
-                  AI generator akan memproses pada Phase B.
+                  Draf harian dibuat otomatis saat jadwal generasi atau dapat dipicu manual.
                 </p>
               </div>
             )}
@@ -261,7 +290,7 @@ export default async function DashboardPage() {
                   Belum ada riwayat run
                 </div>
                 <p className="mt-1 text-xs text-muted-foreground">
-                  Supabase cron belum dijadwalkan (Phase E).
+                  Riwayat generasi dicatat otomatis saat siklus worker berjalan.
                 </p>
               </div>
             )}
@@ -269,40 +298,233 @@ export default async function DashboardPage() {
         </div>
       </div>
 
-      {/* Quick Setup / System Status Section */}
+      {/* Threads Official Insights Section */}
+      <div className="rounded-2xl border border-border bg-card p-6 shadow-sm space-y-4">
+        <div className="flex flex-col justify-between gap-2 sm:flex-row sm:items-center">
+          <div>
+            <h2 className="text-base font-semibold text-foreground flex items-center gap-2">
+              <TrendingUp className="h-4 w-4 text-primary" />
+              Insight &amp; Metrik Akun Threads
+            </h2>
+            <p className="mt-0.5 text-xs text-muted-foreground">
+              Data resmi langsung dari Meta Threads API (@{account?.username || 'threads'}). Cache server 30 menit untuk menjaga kuota rate limit.
+            </p>
+          </div>
+          {('cachedAt' in insights && insights.cachedAt) && (
+            <span className="text-[11px] font-mono text-muted-foreground">
+              Diperbarui: {formatDateWIB(insights.cachedAt)}
+            </span>
+          )}
+        </div>
+
+        {insights.status === 'ok' && insights.metrics ? (
+          <div className="grid gap-3 grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 pt-2">
+            <div className="rounded-xl border border-border/70 bg-muted/20 p-3.5">
+              <div className="flex items-center justify-between text-muted-foreground">
+                <span className="text-xs font-semibold">Views (Tayangan)</span>
+                <Eye className="h-3.5 w-3.5 text-blue-500" />
+              </div>
+              <div className="mt-2 text-xl font-bold font-mono text-foreground">
+                {insights.metrics.views.toLocaleString('id-ID')}
+              </div>
+              <p className="mt-0.5 text-[10px] text-muted-foreground">Total impresi postingan</p>
+            </div>
+
+            <div className="rounded-xl border border-border/70 bg-muted/20 p-3.5">
+              <div className="flex items-center justify-between text-muted-foreground">
+                <span className="text-xs font-semibold">Likes (Suka)</span>
+                <Heart className="h-3.5 w-3.5 text-rose-500" />
+              </div>
+              <div className="mt-2 text-xl font-bold font-mono text-foreground">
+                {insights.metrics.likes.toLocaleString('id-ID')}
+              </div>
+              <p className="mt-0.5 text-[10px] text-muted-foreground">Total apresiasi suka</p>
+            </div>
+
+            <div className="rounded-xl border border-border/70 bg-muted/20 p-3.5">
+              <div className="flex items-center justify-between text-muted-foreground">
+                <span className="text-xs font-semibold">Replies (Balasan)</span>
+                <MessageCircle className="h-3.5 w-3.5 text-emerald-500" />
+              </div>
+              <div className="mt-2 text-xl font-bold font-mono text-foreground">
+                {insights.metrics.replies.toLocaleString('id-ID')}
+              </div>
+              <p className="mt-0.5 text-[10px] text-muted-foreground">Komentar &amp; diskusi</p>
+            </div>
+
+            <div className="rounded-xl border border-border/70 bg-muted/20 p-3.5">
+              <div className="flex items-center justify-between text-muted-foreground">
+                <span className="text-xs font-semibold">Reposts</span>
+                <Repeat className="h-3.5 w-3.5 text-purple-500" />
+              </div>
+              <div className="mt-2 text-xl font-bold font-mono text-foreground">
+                {insights.metrics.reposts.toLocaleString('id-ID')}
+              </div>
+              <p className="mt-0.5 text-[10px] text-muted-foreground">Dibagikan pengguna lain</p>
+            </div>
+
+            <div className="rounded-xl border border-border/70 bg-muted/20 p-3.5">
+              <div className="flex items-center justify-between text-muted-foreground">
+                <span className="text-xs font-semibold">Quotes (Kutipan)</span>
+                <Quote className="h-3.5 w-3.5 text-amber-500" />
+              </div>
+              <div className="mt-2 text-xl font-bold font-mono text-foreground">
+                {insights.metrics.quotes.toLocaleString('id-ID')}
+              </div>
+              <p className="mt-0.5 text-[10px] text-muted-foreground">Dikutip dengan komentar</p>
+            </div>
+          </div>
+        ) : insights.status === 'scope_missing' ? (
+          <div className="rounded-xl border border-amber-500/20 bg-amber-500/5 p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+            <div className="flex items-start gap-3">
+              <ShieldAlert className="h-5 w-5 text-amber-500 shrink-0 mt-0.5" />
+              <div>
+                <p className="text-xs font-bold text-foreground">
+                  Izin Insight (threads_manage_insights) Belum Diberikan
+                </p>
+                <p className="mt-0.5 text-xs text-muted-foreground">
+                  Akun @{account?.username} saat ini terhubung untuk publikasi. Untuk mengaktifkan metrik views, likes, dan interaksi resmi Meta di sini, silakan hubungkan ulang akun di Pengaturan.
+                </p>
+              </div>
+            </div>
+            <Link
+              href="/settings"
+              className="inline-flex shrink-0 items-center gap-1.5 rounded-xl bg-amber-500/10 px-3.5 py-2 text-xs font-semibold text-amber-600 hover:bg-amber-500/20 transition-colors"
+            >
+              Buka Pengaturan
+            </Link>
+          </div>
+        ) : insights.status === 'not_connected' ? (
+          <div className="rounded-xl border border-border/80 bg-muted/20 p-4 text-xs text-muted-foreground flex items-center justify-between">
+            <span>Hubungkan akun Threads di Pengaturan untuk memantau metrik performa secara live.</span>
+            <Link href="/settings" className="text-primary font-semibold hover:underline">
+              Hubungkan &rarr;
+            </Link>
+          </div>
+        ) : (
+          <div className="rounded-xl border border-border/80 bg-muted/20 p-4 text-xs text-muted-foreground">
+            {insights.message || 'Data insight belum tersedia atau akun belum memiliki aktivitas publikasi yang cukup.'}
+          </div>
+        )}
+      </div>
+
+      {/* System Status Section */}
       <div className="rounded-2xl border border-border bg-card p-6 shadow-sm">
-        <h2 className="text-base font-semibold text-foreground flex items-center gap-2">
-          <Layers className="h-4 w-4 text-primary" />
-          Kesiapan Fondasi Sistem (Phase A)
-        </h2>
+        <div className="flex items-center justify-between">
+          <h2 className="text-base font-semibold text-foreground flex items-center gap-2">
+            <Activity className="h-4 w-4 text-primary" />
+            Status Konektivitas & Mesin Otomatisasi
+          </h2>
+          <Link
+            href="/settings"
+            className="text-xs font-medium text-primary hover:underline"
+          >
+            Buka Pengaturan &rarr;
+          </Link>
+        </div>
         <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
           <div className="rounded-xl border border-border bg-muted/20 p-3.5">
-            <div className="flex items-center gap-2 text-xs font-medium text-emerald-500">
-              <CheckCircle2 className="h-3.5 w-3.5" />
-              Database Supabase
+            <div className="flex items-center gap-2 text-xs font-medium">
+              {account?.is_active && !tokenExpired ? (
+                <>
+                  <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500" />
+                  <span className="text-emerald-500">Akun Threads Terhubung</span>
+                </>
+              ) : account?.is_active && tokenExpired ? (
+                <>
+                  <AlertTriangle className="h-3.5 w-3.5 text-amber-500" />
+                  <span className="text-amber-500">Token Kedaluwarsa</span>
+                </>
+              ) : (
+                <>
+                  <WifiOff className="h-3.5 w-3.5 text-muted-foreground" />
+                  <span className="text-muted-foreground">Threads Belum Terhubung</span>
+                </>
+              )}
             </div>
-            <p className="mt-1 text-xs text-foreground font-semibold">Terkoneksi & RLS Aktif</p>
+            <p className="mt-1 text-xs text-foreground font-semibold">
+              {account?.username ? `@${account.username}` : 'Belum dihubungkan'}
+            </p>
+            <p className="mt-0.5 text-[11px] text-muted-foreground">
+              {account?.is_active && !tokenExpired
+                ? `${account.granted_scopes?.length ?? 0} izin aktif`
+                : 'Periksa tab Pengaturan'}
+            </p>
           </div>
+
           <div className="rounded-xl border border-border bg-muted/20 p-3.5">
-            <div className="flex items-center gap-2 text-xs font-medium text-emerald-500">
-              <CheckCircle2 className="h-3.5 w-3.5" />
-              Topic Studio Schema
+            <div className="flex items-center gap-2 text-xs font-medium">
+              {publishLive ? (
+                <>
+                  <Wifi className="h-3.5 w-3.5 text-emerald-500" />
+                  <span className="text-emerald-500">Mode Live</span>
+                </>
+              ) : (
+                <>
+                  <Activity className="h-3.5 w-3.5 text-blue-500" />
+                  <span className="text-blue-500">Mode Simulasi (Dry-Run)</span>
+                </>
+              )}
             </div>
-            <p className="mt-1 text-xs text-foreground font-semibold">8 Topik Bawaan Terpasang</p>
+            <p className="mt-1 text-xs text-foreground font-semibold">
+              {publishLive ? 'Publikasi Nyata' : 'Hanya Mencatat Rencana'}
+            </p>
+            <p className="mt-0.5 text-[11px] text-muted-foreground">
+              {publishLive ? 'Post dikirim ke Meta Threads' : 'Aman untuk pengujian'}
+            </p>
           </div>
+
           <div className="rounded-xl border border-border bg-muted/20 p-3.5">
-            <div className="flex items-center gap-2 text-xs font-medium text-emerald-500">
-              <CheckCircle2 className="h-3.5 w-3.5" />
-              Autentikasi Admin
+            <div className="flex items-center gap-2 text-xs font-medium">
+              {heartbeatFresh ? (
+                <>
+                  <Activity className="h-3.5 w-3.5 text-emerald-500 animate-pulse" />
+                  <span className="text-emerald-500">Worker Aktif</span>
+                </>
+              ) : heartbeat?.created_at ? (
+                <>
+                  <Clock className="h-3.5 w-3.5 text-amber-500" />
+                  <span className="text-amber-500">Worker Standby</span>
+                </>
+              ) : (
+                <>
+                  <Clock className="h-3.5 w-3.5 text-muted-foreground" />
+                  <span className="text-muted-foreground">Worker Belum Ada Sinyal</span>
+                </>
+              )}
             </div>
-            <p className="mt-1 text-xs text-foreground font-semibold">Single-Admin Terproteksi</p>
+            <p className="mt-1 text-xs text-foreground font-semibold">
+              {heartbeatFresh
+                ? 'Heartbeat Segar (< 5m)'
+                : heartbeat?.created_at
+                ? formatDateWIB(heartbeat.created_at)
+                : 'Belum terdeteksi'}
+            </p>
+            <p className="mt-0.5 text-[11px] text-muted-foreground">
+              Dipicu oleh Supabase Cron
+            </p>
           </div>
+
           <div className="rounded-xl border border-border bg-muted/20 p-3.5">
-            <div className="flex items-center gap-2 text-xs font-medium text-muted-foreground">
-              <AlertCircle className="h-3.5 w-3.5 text-amber-500" />
-              Meta Threads OAuth
+            <div className="flex items-center gap-2 text-xs font-medium">
+              {automationActive ? (
+                <>
+                  <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500" />
+                  <span className="text-emerald-500">Otomatisasi Aktif</span>
+                </>
+              ) : (
+                <>
+                  <AlertTriangle className="h-3.5 w-3.5 text-amber-500" />
+                  <span className="text-amber-500">Otomatisasi Dijeda</span>
+                </>
+              )}
             </div>
-            <p className="mt-1 text-xs text-foreground font-semibold">Menunggu Phase D</p>
+            <p className="mt-1 text-xs text-foreground font-semibold">
+              {automationActive ? 'Siklus Berjalan Normal' : 'Dijeda Sementara'}
+            </p>
+            <p className="mt-0.5 text-[11px] text-muted-foreground">
+              {automationActive ? 'Generasi & posting terjadwal' : 'Tidak ada aksi otomatis'}
+            </p>
           </div>
         </div>
       </div>

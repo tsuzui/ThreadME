@@ -1,6 +1,6 @@
 import 'server-only'
 
-export const THREADS_SCOPES = ['threads_basic', 'threads_content_publish']
+export const THREADS_SCOPES = ['threads_basic', 'threads_content_publish', 'threads_manage_insights']
 
 export function getThreadsConfig() {
   const appId = process.env.THREADS_APP_ID

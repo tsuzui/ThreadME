@@ -13,6 +13,7 @@ const inputSchema = z.object({
   alt: z.string().trim().max(500, 'Deskripsi gambar maksimal 500 karakter.'),
   version: z.string().datetime({ offset: true }),
   imageAction: z.enum(['keep', 'remove', 'replace']),
+  context: z.string().trim().max(1000).optional(),
 })
 
 export async function POST(request: NextRequest, context: { params: Promise<{ id: string }> }) {
@@ -37,8 +38,13 @@ export async function POST(request: NextRequest, context: { params: Promise<{ id
   let saved = false
   try {
     const form = await request.formData()
-    const parsed = inputSchema.safeParse({ content: form.get('content'), alt: form.get('alt') || '',
-      version: form.get('version'), imageAction: form.get('imageAction') })
+    const parsed = inputSchema.safeParse({
+      content: form.get('content'),
+      alt: form.get('alt') || '',
+      version: form.get('version'),
+      imageAction: form.get('imageAction'),
+      context: form.get('context') ? String(form.get('context')) : undefined,
+    })
     if (!parsed.success) return NextResponse.json({ error: parsed.error.issues[0].message }, { status: 400 })
     const input = parsed.data
     const { data: post, error: readError } = await db.from('content_posts').select('*').eq('id', id).maybeSingle()
@@ -68,7 +74,9 @@ export async function POST(request: NextRequest, context: { params: Promise<{ id
       content: input.content, content_type: path ? 'image' : 'text',
       image_storage_path: path, image_public_url: url, image_alt_text: path ? input.alt || null : null,
       image_prompt: null, quality_score: null, quality_notes: { manuallyEdited: true },
-      generation_metadata: { ...metadata, manuallyEdited: true }, updated_at: new Date().toISOString(),
+      generation_metadata: { ...metadata, manuallyEdited: true },
+      context: input.context !== undefined ? input.context : post.context,
+      updated_at: new Date().toISOString(),
     }
     const { data: updated, error: updateError } = await db.from('content_posts').update(payload)
       .eq('id', id).eq('status', 'ready').eq('updated_at', input.version).select('id').maybeSingle()

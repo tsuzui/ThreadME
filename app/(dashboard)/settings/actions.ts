@@ -78,6 +78,35 @@ export async function updateAppSettingsAction(
       return { error: `Gagal menyimpan pengaturan: ${updateError.message}` }
     }
 
+    // Sync primary recurring rule with posting_time & automationEnabled
+    try {
+      const leadMinutes = Math.max(
+        5,
+        Math.min(
+          180,
+          Math.floor(
+            ((new Date(`1970-01-01T${postingTime}Z`).getTime() -
+              new Date(`1970-01-01T${generationTime}Z`).getTime() +
+              86400000) %
+              86400000) /
+              60000
+          )
+        )
+      )
+
+      await (supabase.from('recurring_rules') as any).upsert(
+        {
+          posting_time: postingTime,
+          generation_lead_minutes: leadMinutes,
+          enabled: automationEnabled,
+          effective_date: new Date().toISOString().slice(0, 10),
+        },
+        { onConflict: 'posting_time' }
+      )
+    } catch {
+      // Non-blocking sync error
+    }
+
     revalidatePath('/settings')
     revalidatePath('/dashboard')
     revalidatePath('/calendar')
@@ -86,5 +115,104 @@ export async function updateAppSettingsAction(
   } catch (err: unknown) {
     const error = err as Error
     return { error: error.message || 'Terjadi kesalahan sistem saat menyimpan.' }
+  }
+}
+
+export async function addRecurringRuleAction(
+  timeRaw: string,
+  leadMinutes = 20
+): Promise<{ success?: boolean; error?: string }> {
+  try {
+    const supabase = await createClient()
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) return { error: 'Silakan login kembali.' }
+
+    const { data: isAdmin } = await supabase.rpc('is_threadme_admin')
+    if (!isAdmin) return { error: 'Akses admin diperlukan.' }
+
+    const time = timeRaw.trim()
+    if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(time)) {
+      return { error: 'Format waktu harus HH:MM.' }
+    }
+
+    const postingTime = `${time}:00`
+    const { error: insertError } = await (supabase.from('recurring_rules') as any).insert({
+      posting_time: postingTime,
+      generation_lead_minutes: Math.max(5, Math.min(180, leadMinutes)),
+      enabled: true,
+      effective_date: new Date().toISOString().slice(0, 10),
+    })
+
+    if (insertError) {
+      if (insertError.code === '23505') {
+        return { error: `Jam posting ${time} WIB sudah ada dalam daftar jadwal rutin.` }
+      }
+      return { error: insertError.message }
+    }
+
+    revalidatePath('/settings')
+    revalidatePath('/calendar')
+    revalidatePath('/dashboard')
+    return { success: true }
+  } catch (err: unknown) {
+    return { error: (err as Error).message }
+  }
+}
+
+export async function toggleRecurringRuleAction(
+  ruleId: string,
+  isEnabled: boolean
+): Promise<{ success?: boolean; error?: string }> {
+  try {
+    const supabase = await createClient()
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) return { error: 'Silakan login kembali.' }
+
+    const { data: isAdmin } = await supabase.rpc('is_threadme_admin')
+    if (!isAdmin) return { error: 'Akses admin diperlukan.' }
+
+    const { error } = await (supabase.from('recurring_rules') as any)
+      .update({ enabled: isEnabled, updated_at: new Date().toISOString() })
+      .eq('id', ruleId)
+
+    if (error) return { error: error.message }
+
+    revalidatePath('/settings')
+    revalidatePath('/calendar')
+    revalidatePath('/dashboard')
+    return { success: true }
+  } catch (err: unknown) {
+    return { error: (err as Error).message }
+  }
+}
+
+export async function deleteRecurringRuleAction(
+  ruleId: string
+): Promise<{ success?: boolean; error?: string }> {
+  try {
+    const supabase = await createClient()
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) return { error: 'Silakan login kembali.' }
+
+    const { data: isAdmin } = await supabase.rpc('is_threadme_admin')
+    if (!isAdmin) return { error: 'Akses admin diperlukan.' }
+
+    const { error } = await (supabase.from('recurring_rules') as any)
+      .delete()
+      .eq('id', ruleId)
+
+    if (error) {
+      if (error.code === '23503') {
+        return { error: 'Jadwal ini sudah memiliki riwayat slot yang terhubung. Nonaktifkan saja alih-alih menghapus.' }
+      }
+      return { error: error.message }
+    }
+
+    revalidatePath('/settings')
+    revalidatePath('/calendar')
+    revalidatePath('/dashboard')
+    return { success: true }
+  } catch (err: unknown) {
+    return { error: (err as Error).message }
   }
 }

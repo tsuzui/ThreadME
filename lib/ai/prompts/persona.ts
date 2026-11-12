@@ -41,6 +41,7 @@ export interface DailyGenerationContext {
   recentTopics: string[]
   styleReferenceTraits?: Record<string, unknown>
   targetFormat?: 'text' | 'image'
+  manualContext?: string
 }
 
 export function buildDailyUserPrompt(ctx: DailyGenerationContext): string {
@@ -53,6 +54,10 @@ export function buildDailyUserPrompt(ctx: DailyGenerationContext): string {
     ? `\nKarakteristik Gaya Acuan (Style Reference):\n${JSON.stringify(ctx.styleReferenceTraits, null, 2)}`
     : ''
 
+  const manualContextSection = ctx.manualContext
+    ? `\nKONTEKS TERTENTU / ISU VIRAL DARI PENGGUNA:\n"${ctx.manualContext}"\n(PENTING: Masukkan konteks ini sebagai analogi, sudut pandang, atau selipan humor yang pas secara natural dengan topik "${ctx.topic.name}", tanpa kaku atau terkesan mengutip berita resmi. Contoh gaya: 'gibran aja tau kapan harus mundur, masa lu enggak').`
+    : ''
+
   return `Buat 1 postingan Threads harian untuk ThreadMe hari ini:
 
 WAKTU & KONTEKS:
@@ -60,7 +65,7 @@ WAKTU & KONTEKS:
 - Topik Terpilih: "${ctx.topic.name}"
 - Deskripsi Topik: ${ctx.topic.description}
 - Sudut Pandang (Angle): "${ctx.angle}" (Kategori: ${ctx.angleCategory})
-${styleContext}
+${styleContext}${manualContextSection}
 
 ANTI-REPETISI (HINDARI KEMIRIPAN DENGAN POSTINGAN TERAKHIR BERIKUT):
 ${recentPostsList}

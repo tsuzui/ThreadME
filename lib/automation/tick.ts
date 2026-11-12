@@ -12,7 +12,6 @@ export async function runAutomationTick() {
   if (error || !settings) throw new Error('settings_unavailable')
   if (!settings.automation_enabled) return { state: 'paused' }
   const today = getTodayDateWIB()
-  const time = new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Jakarta', hour: '2-digit', minute: '2-digit', second: '2-digit', hourCycle: 'h23' }).format(new Date())
   await db.from('system_logs').insert({ level: 'info', event: 'automation_heartbeat', message: 'Worker terjadwal menerima tick.' })
   const { data: account, error: accountError } = await db.from('social_accounts').select('id,token_expires_at,last_token_refresh_at,connected_at').eq('is_active', true).maybeSingle()
   if (accountError || !account?.token_expires_at || Date.parse(account.token_expires_at) <= Date.now()) return { state: 'reconnect_required' }
@@ -20,17 +19,60 @@ export async function runAutomationTick() {
     await refreshThreadsAccount()
     return { state: 'token_refreshed' }
   }
-  const { data: post, error: postError } = await db.from('content_posts').select('*').eq('scheduled_date', today).maybeSingle()
-  if (postError) throw new Error('post_unavailable')
-  if (!post && time >= settings.generation_time) {
+
+  const nowWIBTime = new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Jakarta', hour: '2-digit', minute: '2-digit', second: '2-digit', hourCycle: 'h23' }).format(new Date())
+
+  // Fetch active slots for generation
+  const { data: slots } = await db.from('schedule_slots')
+    .select('id, generate_after, scheduled_for, lifecycle, context')
+    .eq('local_date', today)
+    .eq('lifecycle', 'scheduled')
+    .lte('generate_after', new Date().toISOString())
+    .order('scheduled_for', { ascending: true })
+    .limit(5)
+
+  if (slots && slots.length > 0) {
+    // Check which slots already have posts
+    const slotIds = slots.map(s => s.id)
+    const { data: existingPosts } = await db.from('content_posts')
+      .select('slot_id')
+      .eq('scheduled_date', today)
+      .in('slot_id', slotIds)
+
+    const filledSlotIds = new Set((existingPosts || []).map(p => p.slot_id))
+
+    // Generate for first empty slot whose generation time has arrived
+    for (const slot of slots) {
+      if (filledSlotIds.has(slot.id)) continue
+      await runDailyContentEngine({ slotId: slot.id, context: slot.context ?? undefined })
+      return { state: 'generated', slotId: slot.id }
+    }
+  }
+
+  // Fallback: check for posts without slot_id (legacy path)
+  const { data: legacyPost } = await db.from('content_posts').select('*').eq('scheduled_date', today).is('slot_id', null).maybeSingle()
+  if (!legacyPost && nowWIBTime >= settings.generation_time) {
     await runDailyContentEngine()
     return { state: 'generated' }
   }
-  const resumable = post?.status === 'publishing' && post.last_error_code === 'container_not_ready'
-  if (post && (post.status === 'ready' || resumable) && time >= settings.posting_time && Date.parse(post.scheduled_for) <= Date.now() && post.publish_attempts < 10) {
-    if (post.last_attempt_at && Date.now() - Date.parse(post.last_attempt_at) < 60_000) return { state: 'backoff' }
+
+  // Publish: find first due post that is ready or resumable
+  const { data: duePosts } = await db.from('content_posts')
+    .select('*')
+    .eq('scheduled_date', today)
+    .in('status', ['ready', 'publishing'])
+    .lte('scheduled_for', new Date().toISOString())
+    .order('scheduled_for', { ascending: true })
+    .limit(5)
+
+  for (const post of duePosts || []) {
+    const resumable = post.status === 'publishing' && post.last_error_code === 'container_not_ready'
+    if (post.status !== 'ready' && !resumable) continue
+    if (post.publish_attempts >= 10) continue
+    if (post.last_attempt_at && Date.now() - Date.parse(post.last_attempt_at) < 60_000) continue
     await publishPost(post, post.updated_at, true)
-    return { state: 'publication_processed' }
+    return { state: 'publication_processed', postId: post.id }
   }
-  return { state: post?.status || 'waiting' }
+
+  return { state: duePosts?.length ? duePosts[0].status : 'waiting' }
 }

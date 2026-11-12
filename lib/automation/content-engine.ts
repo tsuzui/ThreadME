@@ -15,6 +15,8 @@ type ContentPostRow = Database['public']['Tables']['content_posts']['Row']
 export interface GeneratePostOptions {
   manualPreview?: boolean
   forcedTopicId?: string
+  slotId?: string
+  context?: string
 }
 
 export interface GeneratePostResult {
@@ -46,20 +48,34 @@ export async function runDailyContentEngine(
     throw new Error('Gagal memuat konfigurasi app_settings.')
   }
 
-  const { data: existingPost, error: existingError } = await supabase
-    .from('content_posts').select('*').eq('scheduled_date', todayWIB).maybeSingle()
+  let existingPostQuery = supabase.from('content_posts').select('*').eq('scheduled_date', todayWIB)
+  if (options.slotId) {
+    existingPostQuery = existingPostQuery.eq('slot_id', options.slotId)
+  }
+  const { data: existingPost, error: existingError } = await existingPostQuery.maybeSingle()
   if (existingError) throw new Error('Gagal memeriksa draf hari ini.')
   if (existingPost) {
     const metadata = existingPost.generation_metadata as Record<string, unknown> | null
     if (!options.manualPreview || existingPost.status !== 'ready' || metadata?.manuallyEdited || existingPost.image_storage_path) {
-      throw new Error('Postingan hari ini sudah tersedia atau telah diedit manual. Buka kalender untuk melihat atau mengedit draf; generasi tidak menimpanya.')
+      throw new Error('Postingan untuk jadwal ini sudah tersedia atau telah diedit manual. Buka kalender untuk melihat atau mengedit draf; generasi tidak menimpanya.')
     }
   }
 
   const lease = randomUUID()
-  const { data: claimed, error: claimError } = await supabase.rpc('claim_daily_generation', {
-    p_date: todayWIB, p_lease: lease, p_manual: !!options.manualPreview, p_version: existingPost?.updated_at || null,
-  })
+  const { data: claimed, error: claimError } = options.slotId
+    ? await supabase.rpc('claim_slot_generation', {
+        p_date: todayWIB,
+        p_slot_id: options.slotId,
+        p_lease: lease,
+        p_manual: !!options.manualPreview,
+        p_version: existingPost?.updated_at || null,
+      })
+    : await supabase.rpc('claim_daily_generation', {
+        p_date: todayWIB,
+        p_lease: lease,
+        p_manual: !!options.manualPreview,
+        p_version: existingPost?.updated_at || null,
+      })
   if (claimError || !claimed) throw new Error('Generasi belum dapat diklaim: proses lain aktif, jadwal belum tiba, atau batas percobaan tercapai.')
   try {
   // 2. Muat topik aktif
@@ -134,6 +150,7 @@ export async function runDailyContentEngine(
     angleCategory: chosenAngle.category,
     recentPostsContent,
     recentTopics: usageHistory.map((u) => u.topic),
+    manualContext: options.context || existingPost?.context || undefined,
   })
 
   let finalContent = null
@@ -210,12 +227,24 @@ export async function runDailyContentEngine(
     },
   }
 
-  const { data: insertedPostId, error: finalizeError } = await supabase.rpc('finalize_daily_generation', {
-    p_date: todayWIB, p_lease: lease, p_version: existingPost?.updated_at || null,
-    p_manual: !!options.manualPreview,
-    p_post: postPayload as unknown as Json,
-    p_history: historyPayload as unknown as Json,
-  })
+  const { data: insertedPostId, error: finalizeError } = options.slotId
+    ? await supabase.rpc('finalize_slot_generation', {
+        p_date: todayWIB,
+        p_slot_id: options.slotId,
+        p_lease: lease,
+        p_version: existingPost?.updated_at || null,
+        p_manual: !!options.manualPreview,
+        p_post: postPayload as unknown as Json,
+        p_history: historyPayload as unknown as Json,
+      })
+    : await supabase.rpc('finalize_daily_generation', {
+        p_date: todayWIB,
+        p_lease: lease,
+        p_version: existingPost?.updated_at || null,
+        p_manual: !!options.manualPreview,
+        p_post: postPayload as unknown as Json,
+        p_history: historyPayload as unknown as Json,
+      })
   if (finalizeError || !insertedPostId) throw new Error('Draf berubah atau klaim generasi berakhir. Hasil tidak menimpa perubahan terbaru.')
 
   // Catat audit ke system_logs
@@ -229,6 +258,7 @@ export async function runDailyContentEngine(
       angle: chosenAngle.angle,
       format: finalContent.format,
       attempts,
+      slotId: options.slotId || null,
     },
   })
 
@@ -243,7 +273,11 @@ export async function runDailyContentEngine(
     qualityNotes: finalContent.quality_notes,
   }
   } catch (error) {
-    await supabase.rpc('fail_daily_generation', { p_date: todayWIB, p_lease: lease })
+    if (options.slotId) {
+      await supabase.rpc('fail_slot_generation', { p_date: todayWIB, p_slot_id: options.slotId, p_lease: lease })
+    } else {
+      await supabase.rpc('fail_daily_generation', { p_date: todayWIB, p_lease: lease })
+    }
     throw error
   }
 }

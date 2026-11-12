@@ -27,6 +27,81 @@ export type AutomationStatus =
 export interface Database {
   public: {
     Tables: {
+      recurring_rules: {
+        Row: {
+          id: string
+          posting_time: string
+          generation_lead_minutes: number
+          enabled: boolean
+          effective_date: string
+          revision: number
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          posting_time: string
+          generation_lead_minutes: number
+          enabled?: boolean
+          effective_date: string
+          revision?: number
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          posting_time?: string
+          generation_lead_minutes?: number
+          enabled?: boolean
+          effective_date?: string
+          revision?: number
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      schedule_slots: {
+        Row: {
+          id: string
+          recurring_rule_id: string | null
+          local_date: string
+          scheduled_for: string
+          generate_after: string
+          source: 'routine' | 'ad_hoc' | 'legacy'
+          lifecycle: 'scheduled' | 'cancelled' | 'missed' | 'completed' | 'legacy'
+          revision: number
+          context: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          recurring_rule_id?: string | null
+          local_date: string
+          scheduled_for: string
+          generate_after: string
+          source: 'routine' | 'ad_hoc' | 'legacy'
+          lifecycle?: 'scheduled' | 'cancelled' | 'missed' | 'completed' | 'legacy'
+          revision?: number
+          context?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          recurring_rule_id?: string | null
+          local_date?: string
+          scheduled_for?: string
+          generate_after?: string
+          source?: 'routine' | 'ad_hoc' | 'legacy'
+          lifecycle?: 'scheduled' | 'cancelled' | 'missed' | 'completed' | 'legacy'
+          revision?: number
+          context?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       threads_oauth_states: {
         Row: { state_hash: string; admin_id: string; account_revision: string; expires_at: string }
         Insert: { state_hash: string; admin_id: string; account_revision: string; expires_at: string }
@@ -159,12 +234,17 @@ export interface Database {
       automation_runs: {
         Row: {
           id: string
+          slot_id: string | null
           run_date: string
           idempotency_key: string
           status: AutomationStatus
           current_stage: string
           started_at: string
           completed_at: string | null
+          lease_id: string | null
+          lease_expires_at: string | null
+          attempts: number
+          next_attempt_at: string | null
           error_code: string | null
           error_message: string | null
           metadata: Json
@@ -172,12 +252,17 @@ export interface Database {
         }
         Insert: {
           id?: string
+          slot_id?: string | null
           run_date: string
           idempotency_key: string
           status?: AutomationStatus
           current_stage?: string
           started_at?: string
           completed_at?: string | null
+          lease_id?: string | null
+          lease_expires_at?: string | null
+          attempts?: number
+          next_attempt_at?: string | null
           error_code?: string | null
           error_message?: string | null
           metadata?: Json
@@ -185,12 +270,17 @@ export interface Database {
         }
         Update: {
           id?: string
+          slot_id?: string | null
           run_date?: string
           idempotency_key?: string
           status?: AutomationStatus
           current_stage?: string
           started_at?: string
           completed_at?: string | null
+          lease_id?: string | null
+          lease_expires_at?: string | null
+          attempts?: number
+          next_attempt_at?: string | null
           error_code?: string | null
           error_message?: string | null
           metadata?: Json
@@ -255,6 +345,7 @@ export interface Database {
       content_posts: {
         Row: {
           id: string
+          slot_id: string | null
           run_id: string | null
           social_account_id: string | null
           topic_history_id: string | null
@@ -281,6 +372,7 @@ export interface Database {
           last_error_code: string | null
           last_error_message: string | null
           generation_metadata: Json
+          context: string | null
           created_at: string
           updated_at: string
           topic_id: string | null
@@ -289,6 +381,7 @@ export interface Database {
         }
         Insert: {
           id?: string
+          slot_id?: string | null
           run_id?: string | null
           social_account_id?: string | null
           topic_history_id?: string | null
@@ -315,6 +408,7 @@ export interface Database {
           last_error_code?: string | null
           last_error_message?: string | null
           generation_metadata?: Json
+          context?: string | null
           created_at?: string
           updated_at?: string
           topic_id?: string | null
@@ -323,6 +417,7 @@ export interface Database {
         }
         Update: {
           id?: string
+          slot_id?: string | null
           run_id?: string | null
           social_account_id?: string | null
           topic_history_id?: string | null
@@ -349,6 +444,7 @@ export interface Database {
           last_error_code?: string | null
           last_error_message?: string | null
           generation_metadata?: Json
+          context?: string | null
           created_at?: string
           updated_at?: string
           topic_id?: string | null
@@ -477,6 +573,9 @@ export interface Database {
       claim_daily_generation: { Args: { p_date: string; p_lease: string; p_manual: boolean; p_version: string | null }; Returns: boolean }
       finalize_daily_generation: { Args: { p_date: string; p_lease: string; p_version: string | null; p_post: Json; p_history: Json; p_manual: boolean }; Returns: string }
       fail_daily_generation: { Args: { p_date: string; p_lease: string }; Returns: undefined }
+      claim_slot_generation: { Args: { p_date: string; p_slot_id: string; p_lease: string; p_manual: boolean; p_version: string | null }; Returns: boolean }
+      finalize_slot_generation: { Args: { p_date: string; p_slot_id: string; p_lease: string; p_version: string | null; p_post: Json; p_history: Json; p_manual: boolean }; Returns: string }
+      fail_slot_generation: { Args: { p_date: string; p_slot_id: string; p_lease: string }; Returns: undefined }
       save_threads_account: {
         Args: { p_external_id: string; p_username: string; p_token: string; p_expires: string; p_scopes: string[]; p_revision: string }
         Returns: undefined
