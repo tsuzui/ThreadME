@@ -1,9 +1,9 @@
 import { NextResponse } from 'next/server'
-import { createClient } from '@/lib/supabase/server'
+import { createServiceRoleClient } from '@/lib/supabase/service-role'
 
 export async function GET() {
   try {
-    const supabase = await createClient()
+    const supabase = createServiceRoleClient()
 
     // 1. Verify app_settings singleton
     const { data: settings, error: settingsError } = await supabase
