@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
+import Link from 'next/link'
 import {
   Sparkles,
   Loader2,
@@ -16,6 +17,7 @@ import {
 } from 'lucide-react'
 
 interface GenerateResultData {
+  postId?: string
   topic: string
   angle: string
   content: string
@@ -195,7 +197,7 @@ export function DashboardPreviewAction() {
             {/* Footer Aksi */}
             <div className="flex items-center justify-between pt-2 border-t border-border/60">
               <p className="text-[11px] text-muted-foreground">
-                Draf ini otomatis tersimpan di antrean dengan status &lsquo;ready&rsquo;.
+                Draf tersimpan, belum dipublikasikan. {result.postId && <Link href={`/posts/${result.postId}`} className="text-primary underline">Edit teks / tambah gambar</Link>}
               </p>
               <div className="flex items-center gap-2">
                 <button

@@ -1,4 +1,5 @@
 import { createClient } from '@/lib/supabase/server'
+import Link from 'next/link'
 import type { Database } from '@/types/database'
 import { FileText, ImageIcon, ExternalLink, Inbox } from 'lucide-react'
 
@@ -118,7 +119,7 @@ export default async function PostsPage() {
                           <ExternalLink className="h-3 w-3" />
                         </a>
                       ) : (
-                        <span className="text-xs text-muted-foreground">-</span>
+                        <Link href={`/posts/${post.id}`} className="text-xs font-semibold text-primary hover:underline">{post.status === 'ready' ? 'Edit draf' : 'Lihat detail'}</Link>
                       )}
                     </td>
                   </tr>

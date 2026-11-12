@@ -1,4 +1,6 @@
 import { createClient } from '@/lib/supabase/server'
+import Link from 'next/link'
+import { getTodayDateWIB } from '@/lib/utils'
 import type { Database } from '@/types/database'
 import { Calendar as CalendarIcon, Clock, Sparkles, CheckCircle2 } from 'lucide-react'
 
@@ -9,22 +11,20 @@ type ContentPost = Database['public']['Tables']['content_posts']['Row']
 export default async function CalendarPage() {
   const supabase = await createClient()
 
-  // Fetch recent and upcoming posts for the calendar view
-  const { data: rawPosts } = await supabase
-    .from('content_posts')
-    .select('*')
-    .order('scheduled_date', { ascending: false })
-    .limit(30)
-
+  const today = new Date(`${getTodayDateWIB()}T12:00:00+07:00`)
+  const dates = Array.from({ length: 7 }, (_, i) => new Date(today.getTime() + (i - 3) * 86400000).toISOString().slice(0, 10))
+  const [postsResult, settingsResult] = await Promise.all([
+    supabase.from('content_posts').select('*').gte('scheduled_date', dates[0]).lte('scheduled_date', dates[6]),
+    supabase.from('app_settings').select('posting_time').eq('singleton', true).single(),
+  ])
+  const { data: rawPosts, error } = postsResult
+  const { data: settings } = settingsResult
+  const postingTime = (settings as { posting_time: string } | null)?.posting_time.slice(0, 5) || '19:00'
   const posts = (rawPosts as ContentPost[] | null) || []
-
-  // Generate 7 days in Asia/Jakarta around today
   const days = []
-  const today = new Date()
 
   for (let i = -3; i <= 3; i++) {
-    const d = new Date()
-    d.setDate(today.getDate() + i)
+    const d = new Date(today.getTime() + i * 86400000)
     const dateStr = new Intl.DateTimeFormat('en-CA', {
       timeZone: 'Asia/Jakarta',
       year: 'numeric',
@@ -57,11 +57,12 @@ export default async function CalendarPage() {
             Kalender Konten
           </h1>
           <p className="mt-1 text-sm text-muted-foreground">
-            Distribusi jadwal publikasi harian 1 post per hari (19:00 WIB).
+            Satu postingan per hari · target {postingTime} WIB. Buka draf untuk mengedit teks atau menambah gambar manual.
           </p>
         </div>
       </div>
 
+      {error && <p role="alert" className="text-sm text-destructive">Gagal memuat kalender. Silakan muat ulang halaman.</p>}
       {/* 7-Day Window View */}
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-7">
         {days.map((day) => (
@@ -100,24 +101,25 @@ export default async function CalendarPage() {
                     >
                       {day.post.status}
                     </span>
+                    {day.post.image_public_url && <img src={day.post.image_public_url} alt={day.post.image_alt_text || 'Lampiran postingan'} className="w-full rounded-lg object-cover aspect-square" />}
                     <p className="line-clamp-3 text-xs text-foreground font-medium">
                       {day.post.content}
                     </p>
                     <span className="block text-[10px] text-muted-foreground font-mono">
-                      {day.post.pillar} • {day.post.content_type}
+                      {new Intl.DateTimeFormat('id-ID', { timeZone: 'Asia/Jakarta', hour: '2-digit', minute: '2-digit' }).format(new Date(day.post.scheduled_for))} WIB • {day.post.content_type}
                     </span>
                   </div>
                 ) : (
                   <div className="rounded-xl border border-dashed border-border/80 p-3 text-center text-xs text-muted-foreground">
                     <Clock className="mx-auto h-4 w-4 text-muted-foreground/60 mb-1" />
-                    Slot 19:00 WIB
+                    Belum ada draf · {postingTime} WIB
                   </div>
                 )}
               </div>
             </div>
 
             <div className="mt-4 border-t border-border/60 pt-2 text-[11px] text-muted-foreground flex items-center justify-between">
-              <span>Maks 1 Post</span>
+              {day.post ? <Link href={`/posts/${day.post.id}`} className="font-semibold text-primary hover:underline">{day.post.status === 'ready' ? 'Edit draf' : 'Lihat postingan'}</Link> : <span>Maks 1 Post</span>}
               {day.post?.status === 'published' && (
                 <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500" />
               )}

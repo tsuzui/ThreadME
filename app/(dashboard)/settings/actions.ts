@@ -38,7 +38,6 @@ export async function updateAppSettingsAction(
     const postingTimeRaw = (formData.get('posting_time') as string)?.trim()
     const generationTimeRaw = (formData.get('generation_time') as string)?.trim()
     const automationEnabled = formData.get('automation_enabled') === 'on'
-    const imageTargetRatioRaw = Number(formData.get('image_target_ratio'))
     const cooldownDaysRaw = Number(formData.get('topic_rotation_cooldown_days'))
     const maxRetriesRaw = Number(formData.get('max_generation_retries'))
     const personaPrompt = (formData.get('persona_prompt') as string)?.trim()
@@ -55,7 +54,6 @@ export async function updateAppSettingsAction(
     const postingTime = formatTime(postingTimeRaw, '19:00:00')
     const generationTime = formatTime(generationTimeRaw, '18:40:00')
 
-    const imageTargetRatio = isNaN(imageTargetRatioRaw) ? 0.35 : Math.max(0, Math.min(1, imageTargetRatioRaw))
     const cooldownDays = isNaN(cooldownDaysRaw) ? 7 : Math.max(1, Math.min(30, cooldownDaysRaw))
     const maxRetries = isNaN(maxRetriesRaw) ? 2 : Math.max(0, Math.min(5, maxRetriesRaw))
 
@@ -63,7 +61,7 @@ export async function updateAppSettingsAction(
       posting_time: postingTime,
       generation_time: generationTime,
       automation_enabled: automationEnabled,
-      image_target_ratio: imageTargetRatio,
+      image_target_ratio: 0,
       topic_rotation_cooldown_days: cooldownDays,
       max_generation_retries: maxRetries,
       persona_prompt: personaPrompt || null,

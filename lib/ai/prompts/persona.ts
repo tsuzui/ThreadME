@@ -66,9 +66,8 @@ ANTI-REPETISI (HINDARI KEMIRIPAN DENGAN POSTINGAN TERAKHIR BERIKUT):
 ${recentPostsList}
 
 INSTRUKSI FORMAT:
-- Tentukan apakah postingan ini lebih kuat sebagai "text" atau "image" (gambar meme orisinal).
-- Default: "text" (gunakan teks saja jika tulisannya sudah cukup kuat dan lucu).
-- Jika memilih format "image", sertakan "image_prompt" yang spesifik, lucu/relatable, dan "image_alt_text". Jangan menaruh teks panjang di dalam gambar!
+- Selalu gunakan format "text". Teks harus kuat dan dapat dipahami tanpa gambar.
+- Gambar hanya ditambahkan manual oleh pemilik akun. Isi image_prompt dan image_alt_text dengan null.
 
 KEMBALIKAN HANYA OBJEK JSON DENGAN STRUKTUR INI:
 {
@@ -77,7 +76,7 @@ KEMBALIKAN HANYA OBJEK JSON DENGAN STRUKTUR INI:
   "angle": "${ctx.angle}",
   "angle_category": "${ctx.angleCategory}",
   "content": "Isi postingan Threads dalam bahasa Indonesia (1-3 kalimat)",
-  "format": "text" | "image",
+  "format": "text",
   "image_prompt": null,
   "image_alt_text": null,
   "source_title": null,

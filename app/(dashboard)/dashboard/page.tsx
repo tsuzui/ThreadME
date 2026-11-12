@@ -24,60 +24,21 @@ type AutomationRun = Database['public']['Tables']['automation_runs']['Row']
 export default async function DashboardPage() {
   const supabase = await createClient()
 
-  // 1. Fetch app_settings
-  const { data: settingsData } = await supabase
-    .from('app_settings')
-    .select('*')
-    .eq('singleton', true)
-    .single()
-  const settings = settingsData as AppSettings | null
-
-  // 2. Fetch last successful published post
-  const { data: lastPublishedData } = await supabase
-    .from('content_posts')
-    .select('*')
-    .eq('status', 'published')
-    .order('published_at', { ascending: false })
-    .limit(1)
-    .maybeSingle()
-  const lastPublishedPost = lastPublishedData as ContentPost | null
-
-  // 3. Fetch next scheduled / ready post
-  const { data: nextReadyData } = await supabase
-    .from('content_posts')
-    .select('*')
-    .in('status', ['ready', 'generating'])
-    .order('scheduled_for', { ascending: true })
-    .limit(1)
-    .maybeSingle()
-  const nextReadyPost = nextReadyData as ContentPost | null
-
-  // 4. Count posts published this month (Asia/Jakarta current month)
-  const now = new Date()
-  const firstDayOfMonth = new Date(now.getFullYear(), now.getMonth(), 1).toISOString()
-  const { count: monthlyPublishedCount } = await supabase
-    .from('content_posts')
-    .select('*', { count: 'exact', head: true })
-    .eq('status', 'published')
-    .gte('published_at', firstDayOfMonth)
-
-  // 5. Fetch latest generation result (latest post record)
-  const { data: latestPostData } = await supabase
-    .from('content_posts')
-    .select('*')
-    .order('created_at', { ascending: false })
-    .limit(1)
-    .maybeSingle()
-  const latestPost = latestPostData as ContentPost | null
-
-  // 6. Fetch recent automation run
-  const { data: latestRunData } = await supabase
-    .from('automation_runs')
-    .select('*')
-    .order('started_at', { ascending: false })
-    .limit(1)
-    .maybeSingle()
-  const latestRun = latestRunData as AutomationRun | null
+  const firstDayOfMonth = `${new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Jakarta', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date()).slice(0, 7)}-01T00:00:00+07:00`
+  const [settingsResult, publishedResult, readyResult, countResult, latestResult, runResult] = await Promise.all([
+    supabase.from('app_settings').select('*').eq('singleton', true).single(),
+    supabase.from('content_posts').select('*').eq('status', 'published').order('published_at', { ascending: false }).limit(1).maybeSingle(),
+    supabase.from('content_posts').select('*').in('status', ['ready', 'generating']).order('scheduled_for', { ascending: true }).limit(1).maybeSingle(),
+    supabase.from('content_posts').select('*', { count: 'exact', head: true }).eq('status', 'published').gte('published_at', firstDayOfMonth),
+    supabase.from('content_posts').select('*').order('created_at', { ascending: false }).limit(1).maybeSingle(),
+    supabase.from('automation_runs').select('*').order('started_at', { ascending: false }).limit(1).maybeSingle(),
+  ])
+  const settings = settingsResult.data as AppSettings | null
+  const lastPublishedPost = publishedResult.data as ContentPost | null
+  const nextReadyPost = readyResult.data as ContentPost | null
+  const monthlyPublishedCount = countResult.count
+  const latestPost = latestResult.data as ContentPost | null
+  const latestRun = runResult.data as AutomationRun | null
 
   const automationActive = settings?.automation_enabled ?? false
 

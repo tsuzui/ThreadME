@@ -42,9 +42,6 @@ export function SettingsForm({ initialSettings }: SettingsFormProps) {
   const [automationEnabled, setAutomationEnabled] = useState(
     initialSettings?.automation_enabled ?? true
   )
-  const [imageRatio, setImageRatio] = useState(
-    initialSettings?.image_target_ratio ?? 0.35
-  )
   const [cooldownDays, setCooldownDays] = useState(
     initialSettings?.topic_rotation_cooldown_days ?? 7
   )
@@ -157,30 +154,8 @@ export function SettingsForm({ initialSettings }: SettingsFormProps) {
           Parameter Konten & Rotasi Auto Mix
         </h2>
 
-        <div className="grid gap-4 sm:grid-cols-3">
-          <div>
-            <label
-              htmlFor="image_target_ratio"
-              className="block text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-1.5"
-            >
-              Rasio Postingan Gambar
-            </label>
-            <select
-              id="image_target_ratio"
-              name="image_target_ratio"
-              value={imageRatio}
-              onChange={(e) => setImageRatio(Number(e.target.value))}
-              className="w-full rounded-xl border border-border bg-background px-3.5 py-2.5 text-sm text-foreground focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
-            >
-              <option value="0.2">20% Gambar (~80% Teks)</option>
-              <option value="0.35">35% Gambar (~65% Teks - Default)</option>
-              <option value="0.5">50% Gambar (Seimbang)</option>
-              <option value="0.0">0% (100% Teks Saja)</option>
-            </select>
-            <p className="mt-1 text-[11px] text-muted-foreground">
-              Target porsi konten yang menyertakan visual meme/gambar.
-            </p>
-          </div>
+        <p className="text-sm text-muted-foreground">AI menyiapkan teks saja. Gambar opsional dapat diunggah manual melalui editor draf di kalender.</p>
+        <div className="grid gap-4 sm:grid-cols-2">
 
           <div>
             <label

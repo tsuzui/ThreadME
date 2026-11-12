@@ -1,4 +1,5 @@
 import 'server-only'
+import { randomUUID } from 'node:crypto'
 import { createServiceRoleClient } from '@/lib/supabase/service-role'
 import { getTextAIProvider } from '@/lib/ai/text-provider'
 import { THREADME_SYSTEM_PERSONA, buildDailyUserPrompt } from '@/lib/ai/prompts/persona'
@@ -6,7 +7,7 @@ import { selectTopicAutoMix } from './topic-rotation'
 import { generateCandidateAngles } from './angle-generator'
 import { evaluateContentQuality } from './quality-check'
 import { getTodayDateWIB } from '@/lib/utils'
-import type { Database } from '@/types/database'
+import type { Database, Json } from '@/types/database'
 import type { ContentTopic } from '@/types/topic'
 
 type ContentPostRow = Database['public']['Tables']['content_posts']['Row']
@@ -45,6 +46,22 @@ export async function runDailyContentEngine(
     throw new Error('Gagal memuat konfigurasi app_settings.')
   }
 
+  const { data: existingPost, error: existingError } = await supabase
+    .from('content_posts').select('*').eq('scheduled_date', todayWIB).maybeSingle()
+  if (existingError) throw new Error('Gagal memeriksa draf hari ini.')
+  if (existingPost) {
+    const metadata = existingPost.generation_metadata as Record<string, unknown> | null
+    if (!options.manualPreview || existingPost.status !== 'ready' || metadata?.manuallyEdited || existingPost.image_storage_path) {
+      throw new Error('Postingan hari ini sudah tersedia atau telah diedit manual. Buka kalender untuk melihat atau mengedit draf; generasi tidak menimpanya.')
+    }
+  }
+
+  const lease = randomUUID()
+  const { data: claimed, error: claimError } = await supabase.rpc('claim_daily_generation', {
+    p_date: todayWIB, p_lease: lease, p_manual: !!options.manualPreview, p_version: existingPost?.updated_at || null,
+  })
+  if (claimError || !claimed) throw new Error('Generasi belum dapat diklaim: proses lain aktif, jadwal belum tiba, atau batas percobaan tercapai.')
+  try {
   // 2. Muat topik aktif
   const { data: topicsData, error: topicsError } = await supabase
     .from('content_topics')
@@ -121,7 +138,7 @@ export async function runDailyContentEngine(
 
   let finalContent = null
   let attempts = 0
-  const maxRetries = settingsData.max_generation_retries ?? 2
+  const maxRetries = options.manualPreview ? (settingsData.max_generation_retries ?? 2) : 0
 
   while (attempts <= maxRetries) {
     attempts++
@@ -137,7 +154,7 @@ export async function runDailyContentEngine(
     )
 
     if (validation.passed) {
-      finalContent = genResult.structuredContent
+      finalContent = { ...genResult.structuredContent, format: 'text' as const, image_prompt: null, image_alt_text: null }
       break
     }
   }
@@ -152,9 +169,7 @@ export async function runDailyContentEngine(
   const scheduledFor = new Date(`${todayWIB}T${postingTime}+07:00`).toISOString()
 
   // Simpan record ke topic_history
-  const { data: insertedTopicHistory } = await supabase
-    .from('topic_history')
-    .insert({
+  const historyPayload = {
       topic_id: selectedTopic.id,
       topic: selectedTopic.name,
       pillar: finalContent.pillar,
@@ -166,38 +181,20 @@ export async function runDailyContentEngine(
       source_title: finalContent.source_title,
       source_url: finalContent.source_url,
       used_at: new Date().toISOString(),
-    })
-    .select('id')
-    .single()
-
-  // Perbarui last_selected_at pada topik terpilih
-  await supabase
-    .from('content_topics')
-    .update({ last_selected_at: new Date().toISOString() })
-    .eq('id', selectedTopic.id)
-
-  // Simpan record draf konten ke content_posts
-  // Cek apakah postingan untuk hari ini sudah ada
-  const { data: existingPost } = await supabase
-    .from('content_posts')
-    .select('id, status')
-    .eq('scheduled_date', todayWIB)
-    .maybeSingle()
-
-  let insertedPostId: string | undefined = existingPost?.id
+  }
 
   // Jika belum ada atau belum dipublikasi, simpan draf
   // Catatan: content_type harus 'text' jika belum ada image_storage_path karena constraint check image_post_has_asset
   const postPayload = {
     scheduled_date: todayWIB,
     scheduled_for: scheduledFor,
+    updated_at: new Date().toISOString(),
     content: finalContent.content,
     content_type: 'text' as const,
     pillar: finalContent.pillar,
     tone: chosenAngle.category,
     topic_id: selectedTopic.id,
     angle: chosenAngle.angle,
-    topic_history_id: insertedTopicHistory?.id || null,
     content_fingerprint: angleSelection.fingerprint,
     quality_score: finalContent.quality_notes.naturalness,
     quality_notes: finalContent.quality_notes,
@@ -213,28 +210,13 @@ export async function runDailyContentEngine(
     },
   }
 
-  if (existingPost && existingPost.status !== 'published') {
-    const { error: updateError } = await supabase
-      .from('content_posts')
-      .update(postPayload)
-      .eq('id', existingPost.id)
-
-    if (updateError) {
-      throw new Error(`Gagal memperbarui draf konten: ${updateError.message}`)
-    }
-    insertedPostId = existingPost.id
-  } else if (!existingPost) {
-    const { data: createdPost, error: insertError } = await supabase
-      .from('content_posts')
-      .insert(postPayload)
-      .select('id')
-      .single()
-
-    if (insertError) {
-      throw new Error(`Gagal menyimpan draf konten ke database: ${insertError.message}`)
-    }
-    insertedPostId = createdPost?.id
-  }
+  const { data: insertedPostId, error: finalizeError } = await supabase.rpc('finalize_daily_generation', {
+    p_date: todayWIB, p_lease: lease, p_version: existingPost?.updated_at || null,
+    p_manual: !!options.manualPreview,
+    p_post: postPayload as unknown as Json,
+    p_history: historyPayload as unknown as Json,
+  })
+  if (finalizeError || !insertedPostId) throw new Error('Draf berubah atau klaim generasi berakhir. Hasil tidak menimpa perubahan terbaru.')
 
   // Catat audit ke system_logs
   await supabase.from('system_logs').insert({
@@ -259,5 +241,9 @@ export async function runDailyContentEngine(
     format: finalContent.format,
     qualityScore: finalContent.quality_notes.naturalness,
     qualityNotes: finalContent.quality_notes,
+  }
+  } catch (error) {
+    await supabase.rpc('fail_daily_generation', { p_date: todayWIB, p_lease: lease })
+    throw error
   }
 }

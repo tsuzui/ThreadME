@@ -27,6 +27,12 @@ export type AutomationStatus =
 export interface Database {
   public: {
     Tables: {
+      threads_oauth_states: {
+        Row: { state_hash: string; admin_id: string; account_revision: string; expires_at: string }
+        Insert: { state_hash: string; admin_id: string; account_revision: string; expires_at: string }
+        Update: { state_hash?: string; admin_id?: string; account_revision?: string; expires_at?: string }
+        Relationships: []
+      }
       admin_users: {
         Row: {
           user_id: string
@@ -111,6 +117,8 @@ export interface Database {
           encrypted_access_token: string
           token_expires_at: string | null
           granted_scopes: string[]
+          refresh_lease: string | null
+          refresh_lease_until: string | null
           last_token_refresh_at: string | null
           is_active: boolean
           connected_at: string
@@ -124,6 +132,8 @@ export interface Database {
           encrypted_access_token: string
           token_expires_at?: string | null
           granted_scopes?: string[]
+          refresh_lease?: string | null
+          refresh_lease_until?: string | null
           last_token_refresh_at?: string | null
           is_active?: boolean
           connected_at?: string
@@ -137,6 +147,8 @@ export interface Database {
           encrypted_access_token?: string
           token_expires_at?: string | null
           granted_scopes?: string[]
+          refresh_lease?: string | null
+          refresh_lease_until?: string | null
           last_token_refresh_at?: string | null
           is_active?: boolean
           connected_at?: string
@@ -462,6 +474,23 @@ export interface Database {
     }
     Views: Record<string, never>
     Functions: {
+      claim_daily_generation: { Args: { p_date: string; p_lease: string; p_manual: boolean; p_version: string | null }; Returns: boolean }
+      finalize_daily_generation: { Args: { p_date: string; p_lease: string; p_version: string | null; p_post: Json; p_history: Json; p_manual: boolean }; Returns: string }
+      fail_daily_generation: { Args: { p_date: string; p_lease: string }; Returns: undefined }
+      save_threads_account: {
+        Args: { p_external_id: string; p_username: string; p_token: string; p_expires: string; p_scopes: string[]; p_revision: string }
+        Returns: undefined
+      }
+      disconnect_threads_account: { Args: Record<string, never>; Returns: undefined }
+      claim_threads_refresh: { Args: { p_id: string; p_version: string; p_lease: string }; Returns: boolean }
+      claim_scheduled_threads_post: {
+        Args: { p_id: string; p_version: string; p_account_id: string; p_account_version: string }
+        Returns: Database['public']['Tables']['content_posts']['Row'][]
+      }
+      claim_threads_post: {
+        Args: { p_id: string; p_version: string; p_account_id: string; p_account_version: string }
+        Returns: Database['public']['Tables']['content_posts']['Row'][]
+      }
       is_threadme_admin: {
         Args: Record<string, never>
         Returns: boolean

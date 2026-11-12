@@ -7,6 +7,15 @@ export async function updateSession(request: NextRequest) {
     request,
   })
 
+  const pathname = request.nextUrl.pathname
+  if (pathname.startsWith('/_next/') || pathname === '/favicon.ico' || pathname === '/api/health' || pathname === '/api/automation/tick' || pathname.startsWith('/api/auth/')) {
+    return supabaseResponse
+  }
+  const respond = (response: NextResponse) => {
+    supabaseResponse.cookies.getAll().forEach(cookie => response.cookies.set(cookie))
+    return response
+  }
+
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL
   const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
 
@@ -35,37 +44,27 @@ export async function updateSession(request: NextRequest) {
     data: { user },
   } = await supabase.auth.getUser()
 
-  const pathname = request.nextUrl.pathname
-
-  // Public paths that do not require admin authentication
-  const isAuthPage = pathname.startsWith('/login')
-  const isApiAuth = pathname.startsWith('/api/auth')
-  const isHealth = pathname.startsWith('/api/health')
-  const isStatic =
-    pathname.startsWith('/_next') ||
-    pathname.startsWith('/favicon.ico') ||
-    pathname.includes('.')
-
-  if (isStatic || isApiAuth || isHealth) {
-    return supabaseResponse
-  }
+  const isAuthPage = pathname === '/login'
+  const isApi = pathname.startsWith('/api/')
 
   // If user is not logged in and not on login page, redirect to login
   if (!user && !isAuthPage) {
+    if (isApi) return respond(NextResponse.json({ error: 'Silakan login kembali.' }, { status: 401 }))
     const url = request.nextUrl.clone()
     url.pathname = '/login'
-    return NextResponse.redirect(url)
+    return respond(NextResponse.redirect(url))
   }
 
   // If user is logged in, verify if user is registered in admin_users
   if (user && !isAuthPage) {
     const { data: isAdmin } = await supabase.rpc('is_threadme_admin')
     if (!isAdmin) {
+      if (isApi) return respond(NextResponse.json({ error: 'Akses admin diperlukan.' }, { status: 403 }))
       // User is logged in to Supabase but not authorized as ThreadMe single admin
       const url = request.nextUrl.clone()
       url.pathname = '/login'
       url.searchParams.set('error', 'unauthorized')
-      return NextResponse.redirect(url)
+      return respond(NextResponse.redirect(url))
     }
   }
 
@@ -75,7 +74,7 @@ export async function updateSession(request: NextRequest) {
     if (isAdmin) {
       const url = request.nextUrl.clone()
       url.pathname = '/dashboard'
-      return NextResponse.redirect(url)
+      return respond(NextResponse.redirect(url))
     }
   }
 
