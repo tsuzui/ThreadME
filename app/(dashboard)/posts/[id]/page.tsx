@@ -15,7 +15,7 @@ export default async function PostEditorPage({ params }: { params: Promise<{ id:
   if (error) return <p role="alert" className="text-destructive">Gagal memuat postingan. Silakan muat ulang.</p>
   const post = data as Database['public']['Tables']['content_posts']['Row'] | null
   if (!post) notFound()
-  return <div className="mx-auto max-w-3xl space-y-6">
+  return <div className="mx-auto max-w-4xl space-y-6">
     <div>
       <h1 className="text-2xl font-bold">{post.status === 'ready' ? 'Edit draf postingan' : 'Detail postingan'}</h1>
       <p className="mt-2 text-sm text-muted-foreground">Jadwal: {formatDateWIB(post.scheduled_for)} WIB · {post.status}</p>

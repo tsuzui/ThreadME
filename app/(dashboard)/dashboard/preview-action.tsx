@@ -105,11 +105,11 @@ export function DashboardPreviewAction() {
       {/* Modal Preview Konten yang Dihasilkan */}
       {isModalOpen && result && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm animate-in fade-in duration-200">
-          <div className="relative w-full max-w-xl rounded-2xl border border-border bg-card p-6 shadow-2xl space-y-5">
+          <div role="dialog" aria-modal="true" aria-labelledby="preview-title" className="relative max-h-[90dvh] w-full max-w-xl space-y-5 overflow-y-auto rounded-2xl border border-border bg-card p-5 shadow-2xl sm:p-6">
             {/* Header Modal */}
             <div className="flex items-start justify-between">
               <div>
-                <div className="flex items-center gap-2">
+                <div className="flex flex-wrap items-center gap-2">
                   <span className="rounded-full bg-emerald-500/10 px-2.5 py-0.5 text-xs font-semibold text-emerald-500 flex items-center gap-1.5">
                     <CheckCircle2 className="h-3.5 w-3.5" />
                     Draf Berhasil Digenerate
@@ -118,12 +118,13 @@ export function DashboardPreviewAction() {
                     Auto Mix Topic Studio
                   </span>
                 </div>
-                <h3 className="mt-2 text-lg font-bold text-foreground">
+                <h3 id="preview-title" className="mt-2 text-lg font-bold text-foreground">
                   Hasil Preview Draf Konten
                 </h3>
               </div>
               <button
                 onClick={() => setIsModalOpen(false)}
+                aria-label="Tutup preview draf"
                 className="rounded-lg p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
               >
                 <X className="h-5 w-5" />
@@ -195,7 +196,7 @@ export function DashboardPreviewAction() {
             </div>
 
             {/* Footer Aksi */}
-            <div className="flex items-center justify-between pt-2 border-t border-border/60">
+            <div className="flex flex-col gap-3 border-t border-border/60 pt-3 sm:flex-row sm:items-center sm:justify-between">
               <p className="text-[11px] text-muted-foreground">
                 Preview belum disimpan. <Link href="/posts/new" onClick={() => sessionStorage.setItem('threadme-proposal', result.content)} className="text-primary underline">Edit, tambah gambar, atau jadwalkan</Link>.
               </p>

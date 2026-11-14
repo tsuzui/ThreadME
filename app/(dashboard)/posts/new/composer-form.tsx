@@ -228,16 +228,16 @@ export function ComposerForm({
   }
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-6">
+    <form onSubmit={handleSubmit} className="grid items-start gap-6 xl:grid-cols-2">
       {error && (
-        <div role="alert" className="flex items-start gap-3 rounded-2xl border border-destructive/20 bg-destructive/10 p-4 text-sm text-destructive">
+        <div role="alert" className="xl:col-span-2 flex items-start gap-3 rounded-2xl border border-destructive/20 bg-destructive/10 p-4 text-sm text-destructive">
           <AlertCircle className="h-5 w-5 shrink-0 mt-0.5" />
           <div className="flex-1">{error}</div>
         </div>
       )}
 
       {successInfo && (
-        <div role="status" className="flex items-start gap-3 rounded-2xl border border-emerald-500/20 bg-emerald-500/10 p-4 text-sm text-emerald-600">
+        <div role="status" className="xl:col-span-2 flex items-start gap-3 rounded-2xl border border-emerald-500/20 bg-emerald-500/10 p-4 text-sm text-emerald-600">
           <CheckCircle2 className="h-5 w-5 shrink-0 mt-0.5" />
           <div className="flex-1">
             <p className="font-semibold">{successInfo.message}</p>
@@ -620,7 +620,7 @@ export function ComposerForm({
       </div>
 
       {/* TOMBOL SUBMIT */}
-      <div className="flex items-center justify-end gap-3 pt-2">
+      <div className="flex flex-wrap items-center justify-end gap-3 pt-2 xl:col-span-2">
         <button
           type="button"
           onClick={() => router.back()}

@@ -285,6 +285,11 @@ export default async function DashboardPage() {
 
   return (
     <div className="space-y-6">
+      <div>
+        <p className="page-eyebrow">Ringkasan workspace</p>
+        <h1 className="mt-1 text-2xl font-bold tracking-tight sm:text-3xl">Konten Anda, dalam satu pandangan.</h1>
+        <p className="mt-2 text-sm text-muted-foreground">Pantau jangkauan, tinjau draf, dan jaga ritme publikasi Anda.</p>
+      </div>
       {/* Compact Account Header */}
       <section className="rounded-2xl border border-border bg-card p-5 shadow-sm">
         <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
@@ -313,9 +318,9 @@ export default async function DashboardPage() {
             {/* Account Info */}
             <div className="min-w-0">
               <div className="flex flex-wrap items-center gap-2">
-                <h1 className="text-base font-bold text-foreground truncate">
+                <h2 className="text-base font-bold text-foreground truncate">
                   {insights.profile?.name || (account?.username ? `@${account.username}` : 'Akun Threads')}
-                </h1>
+                </h2>
                 {account?.username && (
                   <a
                     href={`https://www.threads.net/@${account.username}`}
@@ -413,7 +418,7 @@ export default async function DashboardPage() {
       {/* 4 KPI Cards */}
       <section aria-label="Indikator Utama" className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         {/* KPI 1: Terbit Bulan Ini */}
-        <div className="rounded-2xl border border-border bg-card p-5 shadow-sm">
+        <div className="rounded-2xl border border-[#f9dce5] bg-[#fff0f3] p-5">
           <div className="flex items-center justify-between text-muted-foreground">
             <span className="text-xs font-semibold uppercase tracking-wider">
               Terbit Bulan Ini
@@ -437,7 +442,7 @@ export default async function DashboardPage() {
         </div>
 
         {/* KPI 2: Followers */}
-        <div className="rounded-2xl border border-border bg-card p-5 shadow-sm">
+        <div className="rounded-2xl border border-[#f8e4cd] bg-[#fff5e9] p-5">
           <div className="flex items-center justify-between text-muted-foreground">
             <span className="text-xs font-semibold uppercase tracking-wider">
               Followers
@@ -469,7 +474,7 @@ export default async function DashboardPage() {
         </div>
 
         {/* KPI 3: Views */}
-        <div className="rounded-2xl border border-border bg-card p-5 shadow-sm">
+        <div className="rounded-2xl border border-[#d5f0df] bg-[#eafaf0] p-5">
           <div className="flex items-center justify-between text-muted-foreground">
             <span className="text-xs font-semibold uppercase tracking-wider">
               Views (Tayangan)
@@ -501,7 +506,7 @@ export default async function DashboardPage() {
         </div>
 
         {/* KPI 4: Slot Berikutnya (derived from actual schedule_slots) */}
-        <div className="rounded-2xl border border-border bg-card p-5 shadow-sm">
+        <div className="rounded-2xl border border-[#e8ddfa] bg-[#f3edff] p-5">
           <div className="flex items-center justify-between text-muted-foreground">
             <span className="text-xs font-semibold uppercase tracking-wider">
               Slot Berikutnya
@@ -555,6 +560,7 @@ export default async function DashboardPage() {
         unavailable={activityUnavailable}
       />
 
+      <div className="grid items-start gap-6 xl:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)]">
       {/* Recent 6 Posts with True Status Semantics */}
       <section className="rounded-2xl border border-border bg-card p-5 shadow-sm">
         <div className="flex items-center justify-between gap-3">
@@ -672,7 +678,7 @@ export default async function DashboardPage() {
       </section>
 
       {/* Two-Column Section: Topic Distribution (Last 30 Days) & Threads Engagement Breakdown */}
-      <div className="grid gap-6 lg:grid-cols-2">
+      <div className="grid min-w-0 gap-6">
         {/* Topic Distribution of Published Posts (Last 30 Days) */}
         <section className="rounded-2xl border border-border bg-card p-5 shadow-sm space-y-4">
           <div>
@@ -744,7 +750,7 @@ export default async function DashboardPage() {
           </div>
 
           {insights.status === 'ok' && insights.metrics ? (
-            <div className="grid grid-cols-2 gap-3 pt-1 sm:grid-cols-4">
+            <div className="grid grid-cols-2 gap-3 pt-1">
               {/* Likes */}
               <div className="rounded-xl border border-border bg-muted/20 p-3">
                 <div className="flex items-center justify-between text-muted-foreground">
@@ -832,6 +838,7 @@ export default async function DashboardPage() {
             Catatan: Metrik di atas merupakan agregat akun resmi dari Meta, bukan tren mingguan atau angka per postingan.
           </p>
         </section>
+      </div>
       </div>
     </div>
   )

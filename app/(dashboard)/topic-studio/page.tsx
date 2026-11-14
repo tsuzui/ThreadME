@@ -54,7 +54,7 @@ export default async function TopicStudioPage() {
           Konfigurasi Rotasi Topik (Auto Mix)
         </h2>
         <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          <div className="rounded-xl border border-border bg-muted/20 p-4">
+          <div className="rounded-xl border border-primary/10 bg-accent p-4">
             <span className="text-xs font-semibold uppercase text-muted-foreground">Mode Seleksi</span>
             <div className="mt-1 text-lg font-bold text-foreground capitalize">
               {settings?.topic_mode || 'Auto Mix'}
@@ -62,7 +62,7 @@ export default async function TopicStudioPage() {
             <p className="mt-1 text-xs text-muted-foreground">Rotasi adil berbasis riwayat 30 hari.</p>
           </div>
 
-          <div className="rounded-xl border border-border bg-muted/20 p-4">
+          <div className="rounded-xl border border-primary/10 bg-accent p-4">
             <span className="text-xs font-semibold uppercase text-muted-foreground">Cooldown Rotasi</span>
             <div className="mt-1 text-lg font-bold text-foreground">
               {settings?.topic_rotation_cooldown_days ?? 7} Hari
@@ -70,7 +70,7 @@ export default async function TopicStudioPage() {
             <p className="mt-1 text-xs text-muted-foreground">Topik tidak diulang dalam masa jeda.</p>
           </div>
 
-          <div className="rounded-xl border border-border bg-muted/20 p-4">
+          <div className="rounded-xl border border-primary/10 bg-accent p-4">
             <span className="text-xs font-semibold uppercase text-muted-foreground">Kandidat Angle</span>
             <div className="mt-1 text-lg font-bold text-foreground">
               {settings?.angle_candidates_count ?? 5} Sudut Pandang
@@ -78,7 +78,7 @@ export default async function TopicStudioPage() {
             <p className="mt-1 text-xs text-muted-foreground">Dievaluasi sebelum memilih post final.</p>
           </div>
 
-          <div className="rounded-xl border border-border bg-muted/20 p-4">
+          <div className="rounded-xl border border-primary/10 bg-accent p-4">
             <span className="text-xs font-semibold uppercase text-muted-foreground">Style Reference</span>
             <div className="mt-1 text-lg font-bold text-emerald-500">
               {settings?.style_reference_enabled ? 'Aktif' : 'Nonaktif'}

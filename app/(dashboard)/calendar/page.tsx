@@ -71,11 +71,11 @@ export default async function CalendarPage() {
       {error && <p role="alert" className="text-sm text-destructive">Gagal memuat kalender. Silakan muat ulang halaman.</p>}
 
       {/* 7-Day Window View */}
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-7">
+      <div className="grid min-w-0 grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
         {days.map((day) => (
           <div
             key={day.dateStr}
-            className={`flex flex-col justify-between rounded-2xl border p-4 shadow-sm transition-all ${
+            className={`flex min-w-0 flex-col justify-between rounded-2xl border p-5 shadow-sm transition-colors ${
               day.isToday
                 ? 'border-primary/50 bg-primary/5 ring-1 ring-primary/30'
                 : 'border-border bg-card'

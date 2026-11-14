@@ -15,7 +15,7 @@ export default function LoginPage() {
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-background px-4 py-12 sm:px-6 lg:px-8">
-      <div className="w-full max-w-md space-y-8 rounded-2xl border border-border bg-card p-8 shadow-2xl">
+      <div className="w-full max-w-md space-y-8 rounded-3xl border border-border bg-card p-6 shadow-xl shadow-primary/5 sm:p-10">
         <div className="text-center">
           <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-primary/10 text-primary ring-8 ring-primary/5">
             <ShieldCheck className="h-7 w-7" />
@@ -37,7 +37,7 @@ export default function LoginPage() {
 
         <form action={formAction} className="mt-6 space-y-5">
           <div>
-            <label className="block text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+            <label htmlFor="email" className="block text-xs font-semibold uppercase tracking-wider text-muted-foreground">
               Email Admin
             </label>
             <div className="relative mt-2 rounded-lg">
@@ -57,7 +57,7 @@ export default function LoginPage() {
           </div>
 
           <div>
-            <label className="block text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+            <label htmlFor="password" className="block text-xs font-semibold uppercase tracking-wider text-muted-foreground">
               Kata Sandi
             </label>
             <div className="relative mt-2 rounded-lg">

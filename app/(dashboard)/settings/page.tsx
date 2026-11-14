@@ -26,13 +26,16 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
   const heartbeat = heartbeatResult.data as { created_at: string } | null
   const recurringRules = (rulesResult.data as RecurringRule[] | null) || []
 
-  return <div className="max-w-4xl space-y-8">
+  return <div className="mx-auto max-w-5xl space-y-6">
     <div>
       <h1 className="text-2xl font-bold tracking-tight text-foreground sm:text-3xl">Pengaturan Sistem</h1>
       <p className="mt-1 text-sm text-muted-foreground">Konfigurasi jadwal publikasi multi-slot, parameter rotasi topik Auto Mix, dan integrasi Threads.</p>
     </div>
     <ThreadsConnection account={accountResult.data} configurationError={threadsConfigurationError()} loadError={!!accountResult.error} outcome={query.threads} />
-    <section className="space-y-2 rounded-2xl border border-border bg-card p-5 sm:p-6">
+    <SettingsForm initialSettings={settings} />
+    <RecurringRulesCard initialRules={recurringRules} primaryPostingTime={settings?.posting_time} />
+    <div className="grid items-start gap-6 lg:grid-cols-2">
+    <section className="space-y-3 rounded-2xl border border-border bg-card p-5 shadow-sm sm:p-6">
       <h2 className="text-base font-semibold">Status otomatisasi</h2>
       <p className="text-sm">Mode server: {process.env.THREADS_PUBLISH_MODE === 'live' ? 'Live — dapat menerbitkan ke Threads' : 'Simulasi — tidak menerbitkan'}</p>
       <p className="text-sm">Jadwal harian: {settings?.automation_enabled ? 'Aktif' : 'Dijeda'} · {recurringRules.length} jadwal rutin terdaftar</p>
@@ -40,7 +43,6 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
       <p className="text-xs text-muted-foreground">Hasil publikasi yang belum pasti tidak dikirim ulang otomatis. Periksa status draf dan akun Threads sebelum melanjutkan.</p>
     </section>
     <AutomationTest />
-    <RecurringRulesCard initialRules={recurringRules} primaryPostingTime={settings?.posting_time} />
-    <SettingsForm initialSettings={settings} />
+    </div>
   </div>
 }

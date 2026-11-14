@@ -31,7 +31,8 @@ export default async function LogsPage() {
         </div>
       </div>
 
-      <div className="rounded-2xl border border-border bg-card shadow-sm overflow-hidden">
+      <div className="min-w-0 overflow-hidden rounded-2xl border border-border bg-card shadow-sm">
+        <div className="flex items-center gap-3 border-b border-border px-6 py-5"><span className="flex h-10 w-10 items-center justify-center rounded-xl bg-accent text-primary"><ScrollText className="h-5 w-5" /></span><div><h2 className="text-sm font-semibold">Jejak aktivitas sistem</h2><p className="mt-0.5 text-xs text-muted-foreground">100 kejadian terakhir, dari yang paling baru.</p></div></div>
         {error ? (
           <div className="p-8 text-center text-sm text-destructive">
             Gagal memuat log sistem: {error.message}
@@ -89,7 +90,7 @@ export default async function LogsPage() {
                       <td className="whitespace-nowrap px-6 py-3.5 font-semibold text-foreground">
                         {log.event}
                       </td>
-                      <td className="px-6 py-3.5 text-foreground max-w-lg">
+                      <td className="min-w-[240px] max-w-lg break-words px-6 py-3.5 font-sans leading-relaxed text-foreground">
                         {log.message}
                       </td>
                     </tr>

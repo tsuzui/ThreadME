@@ -28,7 +28,7 @@ export default async function NewPostPage() {
   const defaultTime = (settings?.posting_time || '19:00:00').slice(0, 5)
 
   return (
-    <div className="mx-auto max-w-3xl space-y-6">
+    <div className="mx-auto max-w-6xl space-y-6">
       <div>
         <h1 className="text-2xl font-bold tracking-tight text-foreground sm:text-3xl">
           Buat Postingan Baru

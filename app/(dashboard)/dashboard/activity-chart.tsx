@@ -130,8 +130,9 @@ export function ActivityChart({
               viewBox={`0 0 ${Math.max(560, range * 32)} 200`}
               role="img"
               aria-label={`Grafik aktivitas postingan ${range} hari terakhir`}
-              className="h-52 w-full min-w-[560px]"
+              className="h-60 w-full min-w-[560px]"
             >
+              {[30, 75, 120].map(y => <line key={y} x1="0" y1={y} x2="100%" y2={y} className="stroke-border" strokeDasharray="4 5" strokeWidth="1" />)}
               <line x1="0" y1="165" x2="100%" y2="165" className="stroke-border" strokeWidth="1" />
               {days.map((day, index) => {
                 const totalWidth = Math.max(560, range * 32)
@@ -141,11 +142,7 @@ export function ActivityChart({
 
                 return (
                   <g key={day.key}>
-                    <title>
-                      {day.key}
-                      {day.isToday ? ' (Hari ini)' : ''}: {day.published} terbit
-                      {day.scheduled > 0 ? `, ${day.scheduled} terjadwal hari ini` : ''}
-                    </title>
+                    <title>{`${day.key}${day.isToday ? ' (Hari ini)' : ''}: ${day.published} terbit${day.scheduled > 0 ? `, ${day.scheduled} terjadwal hari ini` : ''}`}</title>
                     {/* Published Bar (Green) */}
                     {day.published > 0 && (
                       <rect
@@ -154,7 +151,7 @@ export function ActivityChart({
                         width={colWidth * 0.28}
                         height={pubHeight}
                         rx="2"
-                        className="fill-emerald-500"
+                        className="fill-cyan-500"
                       />
                     )}
                     {/* Active Today Queue Bar (Blue) */}
@@ -202,7 +199,7 @@ export function ActivityChart({
           <div className="flex flex-wrap items-center justify-between gap-2 border-t border-border/60 pt-3 text-[11px] text-muted-foreground">
             <div className="flex items-center gap-4">
               <span className="flex items-center gap-1.5">
-                <span className="h-2.5 w-2.5 rounded-sm bg-emerald-500" />
+                <span className="h-2.5 w-2.5 rounded-sm bg-cyan-500" />
                 Terbit (riwayat)
               </span>
               <span className="flex items-center gap-1.5">

@@ -28,9 +28,9 @@ export default async function DashboardLayout({
   return (
     <div className="min-h-screen bg-background">
       <Sidebar />
-      <div className="flex flex-col md:pl-64">
+      <div className="flex min-w-0 flex-col md:pl-60 xl:pl-64">
         <Header userEmail={user.email} />
-        <main className="flex-1 p-4 sm:p-8">
+        <main className="mx-auto w-full min-w-0 max-w-[1600px] flex-1 p-4 sm:p-6 lg:p-8">
           {children}
         </main>
       </div>

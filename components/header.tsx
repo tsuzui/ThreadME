@@ -6,120 +6,66 @@ import { logout } from '@/app/login/actions'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { cn } from '@/lib/utils'
+import { navItems, isNavigationActive } from './sidebar'
 
 interface HeaderProps {
   userEmail?: string | null
 }
 
-const navItems = [
-  { name: 'Dashboard', href: '/dashboard' },
-  { name: 'Buat Postingan', href: '/posts/new' },
-  { name: 'Daftar Postingan', href: '/posts' },
-  { name: 'Kalender Konten', href: '/calendar' },
-  { name: 'Topic Studio', href: '/topic-studio' },
-  { name: 'Pengaturan', href: '/settings' },
-  { name: 'System Logs', href: '/logs' },
-]
-
 export function Header({ userEmail }: HeaderProps) {
-  const [wibTime, setWibTime] = useState<string>('')
+  const [wibTime, setWibTime] = useState('')
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
   const pathname = usePathname()
+  const currentPage = navItems.find(item => isNavigationActive(pathname, item.href))?.name || 'Workspace'
 
   useEffect(() => {
     function updateClock() {
-      const now = new Date()
-      const timeStr = new Intl.DateTimeFormat('id-ID', {
-        timeZone: 'Asia/Jakarta',
-        hour: '2-digit',
-        minute: '2-digit',
-        second: '2-digit',
-      }).format(now)
-      setWibTime(`${timeStr} WIB`)
+      setWibTime(`${new Intl.DateTimeFormat('id-ID', { timeZone: 'Asia/Jakarta', hour: '2-digit', minute: '2-digit' }).format(new Date())} WIB`)
     }
-
     updateClock()
     const timer = setInterval(updateClock, 1000)
     return () => clearInterval(timer)
   }, [])
 
+  useEffect(() => {
+    function handleEscape(event: KeyboardEvent) {
+      if (event.key === 'Escape') setMobileMenuOpen(false)
+    }
+    window.addEventListener('keydown', handleEscape)
+    return () => window.removeEventListener('keydown', handleEscape)
+  }, [])
+
   return (
     <>
-      <header className="sticky top-0 z-30 flex h-16 w-full items-center justify-between border-b border-border bg-card/70 px-4 backdrop-blur-xl sm:px-8">
-        <div className="flex items-center gap-3">
-          <button
-            type="button"
-            onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-            className="rounded-lg p-2 text-muted-foreground hover:bg-muted hover:text-foreground md:hidden"
-            aria-label="Toggle navigation menu"
-          >
+      <header className="sticky top-0 z-30 flex h-20 w-full items-center justify-between gap-3 border-b border-border bg-card px-4 sm:px-6 lg:px-8">
+        <div className="flex min-w-0 items-center gap-3">
+          <button type="button" onClick={() => setMobileMenuOpen(!mobileMenuOpen)} aria-expanded={mobileMenuOpen} aria-controls="mobile-navigation" aria-label={mobileMenuOpen ? 'Tutup navigasi' : 'Buka navigasi'} className="rounded-lg p-2 text-muted-foreground hover:bg-muted md:hidden">
             {mobileMenuOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
           </button>
-
-          <div className="flex items-center gap-2">
-            <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-500/20 bg-emerald-500/10 px-2.5 py-1 text-xs font-semibold text-emerald-500">
-              <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
-              Engine Online
-            </span>
-            {wibTime && (
-              <span className="hidden items-center gap-1.5 rounded-lg border border-border bg-muted/50 px-2.5 py-1 text-xs font-mono text-muted-foreground sm:inline-flex">
-                <Clock className="h-3.5 w-3.5" />
-                {wibTime}
-              </span>
-            )}
+          <div className="min-w-0">
+            <p className="truncate text-base font-semibold tracking-tight sm:text-lg">{currentPage}</p>
+            <p className="mt-0.5 text-[11px] text-muted-foreground">Personal content workspace</p>
           </div>
         </div>
-
-        <div className="flex items-center gap-4">
-          <div className="hidden items-center gap-2 text-xs sm:flex">
-            <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-primary/10 text-primary">
-              <ShieldCheck className="h-4 w-4" />
-            </div>
-            <div className="text-left">
-              <div className="font-semibold text-foreground">Single Admin</div>
-              <div className="text-[11px] text-muted-foreground truncate max-w-[150px]">
-                {userEmail || 'admin@threadme'}
-              </div>
-            </div>
+        <div className="flex shrink-0 items-center gap-3 lg:gap-6">
+          {wibTime && <span className="hidden items-center gap-2 rounded-lg bg-background px-3 py-2 text-xs text-muted-foreground lg:inline-flex"><Clock className="h-4 w-4" />{wibTime}</span>}
+          <div className="hidden items-center gap-2.5 sm:flex">
+            <span className="flex h-10 w-10 items-center justify-center rounded-full bg-[#fff0df] text-[#9c642d]"><ShieldCheck className="h-5 w-5" /></span>
+            <div><p className="text-xs font-semibold">Administrator</p><p className="mt-0.5 max-w-[160px] truncate text-[11px] text-muted-foreground">{userEmail || 'Admin ThreadMe'}</p></div>
           </div>
-
           <form action={logout}>
-            <button
-              type="submit"
-              className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-background px-3 py-1.5 text-xs font-medium text-muted-foreground transition-all hover:bg-destructive/10 hover:border-destructive/30 hover:text-destructive focus:outline-none focus:ring-2 focus:ring-destructive/30"
-              title="Keluar dari sesi admin"
-            >
-              <LogOut className="h-3.5 w-3.5" />
-              <span className="hidden sm:inline">Keluar</span>
-            </button>
+            <button type="submit" aria-label="Keluar dari sesi admin" title="Keluar dari sesi admin" className="inline-flex min-h-10 min-w-10 items-center justify-center rounded-xl border border-border text-muted-foreground transition-colors hover:border-destructive/30 hover:bg-destructive/5 hover:text-destructive"><LogOut className="h-4 w-4" /></button>
           </form>
         </div>
       </header>
-
-      {/* Mobile Drawer */}
       {mobileMenuOpen && (
-        <div className="border-b border-border bg-card p-4 md:hidden">
-          <nav className="space-y-1">
-            {navItems.map((item) => {
-              const isActive = pathname === item.href
-              return (
-                <Link
-                  key={item.href}
-                  href={item.href}
-                  onClick={() => setMobileMenuOpen(false)}
-                  className={cn(
-                    'block rounded-lg px-3 py-2 text-sm font-medium',
-                    isActive
-                      ? 'bg-primary text-primary-foreground'
-                      : 'text-muted-foreground hover:bg-muted hover:text-foreground'
-                  )}
-                >
-                  {item.name}
-                </Link>
-              )
-            })}
-          </nav>
-        </div>
+        <nav id="mobile-navigation" aria-label="Navigasi mobile" className="sticky top-20 z-30 space-y-1 border-b border-border bg-card p-4 shadow-sm md:hidden">
+          {navItems.map(item => {
+            const active = isNavigationActive(pathname, item.href)
+            const Icon = item.icon
+            return <Link key={item.href} href={item.href} aria-current={active ? 'page' : undefined} onClick={() => setMobileMenuOpen(false)} className={cn('flex items-center gap-3 rounded-xl px-4 py-3 text-sm font-medium', active ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-muted')}><Icon className="h-4 w-4" />{item.name}</Link>
+          })}
+        </nav>
       )}
     </>
   )
