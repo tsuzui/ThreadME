@@ -73,7 +73,10 @@ export async function getThreadsInsights(forceRefresh = false): Promise<ThreadsI
     .eq('is_active', true)
     .maybeSingle()
 
-  if (accountError || !account) {
+  if (accountError) {
+    return { status: 'error', message: 'Status akun Threads gagal dimuat. Silakan muat ulang halaman.' }
+  }
+  if (!account) {
     return { status: 'not_connected', message: 'Belum ada akun Threads yang terhubung.' }
   }
 

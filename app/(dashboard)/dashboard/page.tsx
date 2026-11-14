@@ -26,7 +26,7 @@ export const dynamic = 'force-dynamic'
 type AppSettings = Database['public']['Tables']['app_settings']['Row']
 type ContentPost = Database['public']['Tables']['content_posts']['Row']
 type ScheduleSlot = Database['public']['Tables']['schedule_slots']['Row']
-type SocialAccount = Database['public']['Tables']['social_accounts']['Row']
+type SocialAccount = Pick<Database['public']['Tables']['social_accounts']['Row'], 'username' | 'is_active' | 'token_expires_at'>
 type ContentTopic = Database['public']['Tables']['content_topics']['Row']
 type SystemLog = Database['public']['Tables']['system_logs']['Row']
 
@@ -134,7 +134,7 @@ export default async function DashboardPage() {
       .maybeSingle(),
     supabase
       .from('social_accounts')
-      .select('*')
+      .select('username, is_active, token_expires_at')
       .eq('platform', 'threads')
       .eq('is_active', true)
       .maybeSingle(),
@@ -210,7 +210,9 @@ export default async function DashboardPage() {
     warnings.push({
       id: 'token',
       title: 'Koneksi Threads Perlu Perhatian',
-      message: !account
+      message: accountResult.error
+        ? 'Status koneksi Threads gagal dimuat. Muat ulang halaman; akun belum tentu terputus.'
+        : !account
         ? 'Akun Threads belum terhubung. Hubungkan akun di Pengaturan untuk mengaktifkan otomatisasi.'
         : !tokenValid
         ? 'Token akses akun Threads telah kedaluwarsa. Lakukan refresh atau hubungkan ulang akun.'
@@ -339,7 +341,7 @@ export default async function DashboardPage() {
                       : 'bg-destructive/10 text-destructive'
                   }`}
                 >
-                  {account?.is_active && tokenValid ? 'Terhubung & Aktif' : 'Perlu Perhatian'}
+                  {accountResult.error ? 'Status tidak tersedia' : account?.is_active && tokenValid ? 'Terhubung & Aktif' : 'Perlu Perhatian'}
                 </span>
               </div>
               <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">

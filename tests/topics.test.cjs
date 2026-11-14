@@ -44,6 +44,39 @@ const mockNextCache = {
   revalidatePath: () => {},
 }
 
+for (const scenario of ['valid', 'inactive', 'invalid', 'stale', 'unchanged']) {
+  test(`draft topic update: ${scenario}`, async () => {
+    const id = '11111111-1111-4111-8111-111111111111'
+    const version = '2026-11-14T10:00:00.000Z'
+    let payload
+    const db = { from(table) {
+      const chain = {
+        select() { return chain }, eq() { return chain },
+        update(value) { payload = value; return chain },
+        insert: async () => ({ error: null }),
+        maybeSingle: async () => table === 'content_topics'
+          ? { data: scenario === 'inactive' ? null : { id, slug: 'kerja' }, error: null }
+          : { data: payload ? { id } : { id, status: 'ready', updated_at: scenario === 'stale' ? 'older' : version }, error: null },
+      }
+      return chain
+    } }
+    const { POST } = load('app/api/posts/[id]/route.ts', {
+      'next/server': mockNextServer, 'next/cache': mockNextCache, zod: require('zod'),
+      '@/lib/supabase/server': { createClient: async () => ({ auth: { getUser: async () => ({ data: { user: { id } } }) }, rpc: async () => ({ data: true }) }) },
+      '@/lib/supabase/service-role': { createServiceRoleClient: () => db },
+      '@/lib/automation/draft-image': { POST_IMAGE_BUCKET: 'images' },
+    })
+    const form = new FormData()
+    for (const [key, value] of Object.entries({ content: 'Teks draf untuk pengujian topik.', version, imageAction: 'keep' })) form.set(key, value)
+    if (scenario !== 'unchanged') form.set('topicId', scenario === 'invalid' ? 'bad-id' : id)
+    const response = await POST({ headers: { get: name => name === 'origin' ? 'https://threadme.test' : null }, nextUrl: { origin: 'https://threadme.test' }, formData: async () => form }, { params: Promise.resolve({ id }) })
+    assert.equal(response.status, scenario === 'stale' ? 409 : ['invalid', 'inactive'].includes(scenario) ? 400 : 200)
+    if (scenario === 'valid') { assert.equal(payload.topic_id, id); assert.equal(payload.pillar, 'kerja') }
+    if (scenario === 'unchanged') assert.equal('topic_id' in payload, false)
+    if (['stale', 'invalid', 'inactive'].includes(scenario)) assert.equal(payload, undefined)
+  })
+}
+
 test('POST /api/topics rejects untrusted origin', async () => {
   const shared = load('app/api/topics/shared.ts', {
     'next/server': mockNextServer,

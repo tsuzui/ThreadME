@@ -14,6 +14,7 @@ const inputSchema = z.object({
   version: z.string().datetime({ offset: true }),
   imageAction: z.enum(['keep', 'remove', 'replace']),
   context: z.string().trim().max(1000).optional(),
+  topicId: z.string().uuid('ID topik tidak valid.').optional(),
 })
 
 export async function POST(request: NextRequest, context: { params: Promise<{ id: string }> }) {
@@ -44,6 +45,7 @@ export async function POST(request: NextRequest, context: { params: Promise<{ id
       version: form.get('version'),
       imageAction: form.get('imageAction'),
       context: form.get('context') ? String(form.get('context')) : undefined,
+      topicId: form.has('topicId') ? form.get('topicId') : undefined,
     })
     if (!parsed.success) return NextResponse.json({ error: parsed.error.issues[0].message }, { status: 400 })
     const input = parsed.data
@@ -52,6 +54,13 @@ export async function POST(request: NextRequest, context: { params: Promise<{ id
     if (!post) return NextResponse.json({ error: 'Postingan tidak ditemukan.' }, { status: 404 })
     if (post.status !== 'ready' || post.updated_at !== input.version) {
       return NextResponse.json({ error: 'Draf sudah berubah atau tidak dapat diedit. Muat ulang halaman.' }, { status: 409 })
+    }
+    let topic: { id: string; slug: string } | null = null
+    if (input.topicId) {
+      const result = await db.from('content_topics').select('id, slug').eq('id', input.topicId).eq('is_active', true).maybeSingle()
+      if (result.error) throw new Error('Gagal memeriksa topik. Silakan coba lagi.')
+      if (!result.data) return NextResponse.json({ error: 'Topik tidak ditemukan atau sudah nonaktif. Pilih topik aktif.' }, { status: 400 })
+      topic = result.data
     }
     let path = post.image_storage_path
     let url = post.image_public_url
@@ -72,6 +81,7 @@ export async function POST(request: NextRequest, context: { params: Promise<{ id
       ? post.generation_metadata : {}
     const payload: Database['public']['Tables']['content_posts']['Update'] = {
       content: input.content, content_type: path ? 'image' : 'text',
+      ...(topic ? { topic_id: topic.id, pillar: topic.slug } : {}),
       image_storage_path: path, image_public_url: url, image_alt_text: path ? input.alt || null : null,
       image_prompt: null, quality_score: null, quality_notes: { manuallyEdited: true },
       generation_metadata: { ...metadata, manuallyEdited: true },

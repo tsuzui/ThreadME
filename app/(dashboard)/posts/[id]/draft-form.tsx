@@ -8,7 +8,7 @@ import type { Database } from '@/types/database'
 
 type Post = Database['public']['Tables']['content_posts']['Row']
 
-export function DraftForm({ post }: { post: Post }) {
+export function DraftForm({ post, activeTopics, topicsError }: { post: Post; activeTopics: { id: string; name: string }[]; topicsError: boolean }) {
   const router = useRouter()
   const imageInput = useRef<HTMLInputElement>(null)
   const [content, setContent] = useState(post.content)
@@ -20,6 +20,9 @@ export function DraftForm({ post }: { post: Post }) {
   const [pending, setPending] = useState(false)
   const [aiPending, setAiPending] = useState(false)
   const [suggestion, setSuggestion] = useState<string | null>(null)
+  const [topicId, setTopicId] = useState(activeTopics.some(topic => topic.id === post.topic_id) ? post.topic_id! : '')
+  const [suggestionTopicId, setSuggestionTopicId] = useState<string | null>(null)
+  const [appliedTopicId, setAppliedTopicId] = useState<string | null>(null)
   const [error, setError] = useState('')
   const [success, setSuccess] = useState(false)
   const editable = post.status === 'ready'
@@ -31,8 +34,25 @@ export function DraftForm({ post }: { post: Post }) {
   }, [file])
   const preview = action === 'remove' ? null : localUrl || post.image_public_url
 
+  async function generateFromTopic() {
+    if (!topicId) return
+    setAiPending(true); setError(''); setSuggestion(null); setSuggestionTopicId(null)
+    try {
+      const response = await fetch('/api/posts/generate-preview', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ topicId, context: context.trim() || undefined }),
+      })
+      const data = await response.json()
+      if (!response.ok) throw new Error(data.error || 'Gagal membuat usulan dari topik.')
+      setSuggestion(data.data.content)
+      setSuggestionTopicId(topicId)
+    } catch (error) { setError(error instanceof Error ? error.message : 'Gagal menghubungi AI.') }
+    finally { setAiPending(false) }
+  }
+
   async function requestAiSuggestion() {
     if (!context.trim()) return
+    setSuggestion(null); setSuggestionTopicId(null)
     setAiPending(true)
     setError('')
     try {
@@ -62,6 +82,7 @@ export function DraftForm({ post }: { post: Post }) {
       const body = new FormData()
       body.set('content', content)
       body.set('context', context)
+      if (appliedTopicId) body.set('topicId', appliedTopicId)
       body.set('alt', alt)
       body.set('version', post.updated_at)
       body.set('imageAction', action)
@@ -80,7 +101,19 @@ export function DraftForm({ post }: { post: Post }) {
       {!editable && <p className="rounded-xl bg-muted p-3 text-sm">Postingan berstatus {post.status} hanya dapat dilihat, tidak dapat diedit.</p>}
       {error && <p role="alert" className="rounded-xl bg-destructive/10 p-3 text-sm text-destructive">{error}</p>}
       {success && <p role="status" className="rounded-xl bg-emerald-500/10 p-3 text-sm text-emerald-600">Perubahan draf tersimpan. Belum dipublikasikan ke Threads.</p>}
-      <fieldset disabled={!editable || pending} className="space-y-5 disabled:opacity-70">
+      <fieldset disabled={!editable || pending || aiPending} className="space-y-5 disabled:opacity-70">
+        {editable && <div className="space-y-3 rounded-xl border border-border p-4">
+          <label htmlFor="draft-topic" className="block text-sm font-semibold">Generate berdasarkan topik</label>
+          <p className="text-xs text-muted-foreground">Pilih topik dari Topic Studio. Usulan tidak menimpa teks sampai Anda menerapkannya, lalu menyimpan perubahan.</p>
+          {topicsError && <p role="alert" className="text-xs text-destructive">Daftar topik gagal dimuat. Muat ulang halaman.</p>}
+          {!topicsError && activeTopics.length === 0 && <p className="text-xs text-muted-foreground">Belum ada topik aktif. Aktifkan topik di Topic Studio.</p>}
+          <select id="draft-topic" value={topicId} onChange={event => { setTopicId(event.target.value); setSuggestion(null); setSuggestionTopicId(null) }} className="w-full rounded-xl border border-input bg-background px-3 py-2 text-sm">
+            <option value="">Pilih topik aktif</option>
+            {activeTopics.map(topic => <option key={topic.id} value={topic.id}>{topic.name}</option>)}
+          </select>
+          <button type="button" onClick={generateFromTopic} disabled={!topicId || topicsError || aiPending} className="rounded-xl bg-primary/10 px-3 py-2 text-sm font-semibold text-primary disabled:opacity-50">{aiPending ? 'AI Meracik…' : 'Generate dari Topik Pilihan'}</button>
+          {appliedTopicId && <p className="text-xs text-muted-foreground">Topik yang akan disimpan: {activeTopics.find(topic => topic.id === appliedTopicId)?.name}</p>}
+        </div>}
         {/* Context & AI Assistance Section */}
         <div className="rounded-xl border border-border/80 bg-muted/20 p-4 space-y-3">
           <div className="flex items-center justify-between">
@@ -133,6 +166,8 @@ export function DraftForm({ post }: { post: Post }) {
                   type="button"
                   onClick={() => {
                     setContent(suggestion)
+                    if (suggestionTopicId) setAppliedTopicId(suggestionTopicId)
+                    setSuggestionTopicId(null)
                     setSuggestion(null)
                     setSuccess(false)
                   }}
@@ -186,7 +221,7 @@ export function DraftForm({ post }: { post: Post }) {
       </fieldset>
       <div className="flex flex-wrap justify-end gap-3 border-t border-border pt-4">
         <Link href="/calendar" className="rounded-xl border border-border px-4 py-2 text-sm">{editable ? 'Batal / kembali' : 'Kembali ke kalender'}</Link>
-        {editable && <button disabled={pending || content.trim().length < 15 || content.trim().length > 500} type="submit"
+        {editable && <button disabled={pending || aiPending || content.trim().length < 15 || content.trim().length > 500} type="submit"
           className="rounded-xl bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground disabled:opacity-50">{pending ? 'Menyimpan…' : 'Simpan perubahan'}</button>}
       </div>
     </form>
