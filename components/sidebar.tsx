@@ -125,10 +125,10 @@ export function Sidebar() {
         <div className="rounded-xl border border-border bg-muted/40 p-3 text-xs">
           <div className="flex items-center gap-2 text-foreground font-semibold">
             <Zap className="h-3.5 w-3.5 text-amber-500" />
-            <span>Jadwal Harian 19:00 WIB</span>
+            <span>Jadwal otomatis</span>
           </div>
           <p className="mt-1 text-muted-foreground leading-relaxed">
-            1 post per hari kalender Asia/Jakarta. Persiapan konten dimulai pukul 18:40 WIB.
+            Jam generate dan publikasi mengikuti Pengaturan. Semua jadwal menggunakan WIB.
           </p>
         </div>
       </div>

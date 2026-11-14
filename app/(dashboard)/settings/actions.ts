@@ -83,7 +83,7 @@ export async function updateAppSettingsAction(
       const leadMinutes = Math.max(
         5,
         Math.min(
-          180,
+          1439,
           Math.floor(
             ((new Date(`1970-01-01T${postingTime}Z`).getTime() -
               new Date(`1970-01-01T${generationTime}Z`).getTime() +
@@ -103,6 +103,35 @@ export async function updateAppSettingsAction(
         },
         { onConflict: 'posting_time' }
       )
+
+      // Sync slot rutin hari ini jika belum digenerate
+      const todayWIB = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Jakarta' }).format(new Date())
+      const scheduledForDate = new Date(`${todayWIB}T${postingTime}+07:00`).toISOString()
+      const generateAfterDate = new Date(`${todayWIB}T${generationTime}+07:00`).toISOString()
+
+      const { data: todaySlot } = await (supabase.from('schedule_slots') as any)
+        .select('id')
+        .eq('local_date', todayWIB)
+        .eq('source', 'routine')
+        .eq('lifecycle', 'scheduled')
+        .maybeSingle()
+
+      if (todaySlot) {
+        const { data: postExists } = await (supabase.from('content_posts') as any)
+          .select('id')
+          .eq('slot_id', todaySlot.id)
+          .maybeSingle()
+
+        if (!postExists) {
+          await (supabase.from('schedule_slots') as any)
+            .update({
+              scheduled_for: scheduledForDate,
+              generate_after: generateAfterDate,
+              updated_at: new Date().toISOString(),
+            })
+            .eq('id', todaySlot.id)
+        }
+      }
     } catch {
       // Non-blocking sync error
     }
@@ -138,7 +167,7 @@ export async function addRecurringRuleAction(
     const postingTime = `${time}:00`
     const { error: insertError } = await (supabase.from('recurring_rules') as any).insert({
       posting_time: postingTime,
-      generation_lead_minutes: Math.max(5, Math.min(180, leadMinutes)),
+      generation_lead_minutes: Math.max(5, Math.min(1439, leadMinutes)),
       enabled: true,
       effective_date: new Date().toISOString().slice(0, 10),
     })

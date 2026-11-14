@@ -37,7 +37,7 @@ export function SettingsForm({ initialSettings }: SettingsFormProps) {
     formatForInput(initialSettings?.posting_time, '19:00')
   )
   const [generationTime, setGenerationTime] = useState(
-    formatForInput(initialSettings?.generation_time, '18:40')
+    formatForInput(initialSettings?.generation_time, '08:00')
   )
   const [automationEnabled, setAutomationEnabled] = useState(
     initialSettings?.automation_enabled ?? true
@@ -51,6 +51,24 @@ export function SettingsForm({ initialSettings }: SettingsFormProps) {
   const [personaPrompt, setPersonaPrompt] = useState(
     initialSettings?.persona_prompt ?? ''
   )
+
+  // Calculate review window between generationTime and postingTime
+  const calculateLeadTime = (gen: string, post: string) => {
+    if (!gen || !post) return null
+    const [gh, gm] = gen.split(':').map(Number)
+    const [ph, pm] = post.split(':').map(Number)
+    if (isNaN(gh) || isNaN(gm) || isNaN(ph) || isNaN(pm)) return null
+
+    let diffMinutes = ph * 60 + pm - (gh * 60 + gm)
+    if (diffMinutes <= 0) {
+      diffMinutes += 1440
+    }
+    const hours = Math.floor(diffMinutes / 60)
+    const mins = diffMinutes % 60
+    return { hours, mins, totalMinutes: diffMinutes }
+  }
+
+  const lead = calculateLeadTime(generationTime, postingTime)
 
   return (
     <form action={formAction} className="space-y-6">
@@ -120,10 +138,22 @@ export function SettingsForm({ initialSettings }: SettingsFormProps) {
               required
             />
             <p className="mt-1 text-[11px] text-muted-foreground">
-              Persiapan, validasi, dan kontrol kualitas (Default 18:40 WIB).
+              Persiapan, validasi, dan kontrol kualitas (Default 08:00 WIB).
             </p>
           </div>
         </div>
+
+        {lead && (
+          <div className="rounded-xl border border-primary/20 bg-primary/5 p-3.5 text-xs">
+            <div className="flex items-center gap-2 font-semibold text-primary">
+              <Sparkles className="h-4 w-4" />
+              <span>Jeda Waktu Peninjauan Draf Konten</span>
+            </div>
+            <p className="mt-1 text-muted-foreground leading-relaxed">
+              Draf konten akan dibuat oleh AI <strong>{lead.hours > 0 ? `${lead.hours} jam ` : ''}{lead.mins > 0 ? `${lead.mins} menit ` : ''}</strong>sebelum waktu rilis. Anda memiliki waktu mulai pukul <strong>{generationTime} WIB</strong> untuk melihat dan mengedit draf di Kalender sebelum diterbitkan otomatis ke Threads pada pukul <strong>{postingTime} WIB</strong>.
+            </p>
+          </div>
+        )}
 
         {/* Toggle Otomatisasi */}
         <div className="pt-2 border-t border-border/60">

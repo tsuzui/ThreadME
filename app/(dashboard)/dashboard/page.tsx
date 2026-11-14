@@ -1,636 +1,838 @@
 import { createClient } from '@/lib/supabase/server'
-import type { Database } from '@/types/database'
+import type { Database, ContentStatus } from '@/types/database'
 import {
-  Activity,
   Calendar,
-  CheckCircle2,
-  Clock,
-  Sparkles,
-  FileText,
-  ImageIcon,
-  Send,
-  Wifi,
-  WifiOff,
-  AlertTriangle,
-  TrendingUp,
+  ExternalLink,
   Eye,
+  Send,
+  Users,
+  AlertTriangle,
+  Sparkles,
   Heart,
   MessageCircle,
   Repeat,
   Quote,
   ShieldAlert,
-  Users,
-  ExternalLink,
+  Layers,
 } from 'lucide-react'
 import Link from 'next/link'
 import { formatDateWIB, getTodayDateWIB } from '@/lib/utils'
-import { ActivityChart } from './activity-chart'
+import { ActivityChart, type ActivityPost } from './activity-chart'
 import { DashboardPreviewAction } from './preview-action'
-import { AutomationTest } from './automation-test'
 import { getThreadsInsights, type ThreadsInsightsData } from '@/lib/threads/insights'
 
 export const dynamic = 'force-dynamic'
 
 type AppSettings = Database['public']['Tables']['app_settings']['Row']
 type ContentPost = Database['public']['Tables']['content_posts']['Row']
-type AutomationRun = Database['public']['Tables']['automation_runs']['Row']
+type ScheduleSlot = Database['public']['Tables']['schedule_slots']['Row']
+type SocialAccount = Database['public']['Tables']['social_accounts']['Row']
+type ContentTopic = Database['public']['Tables']['content_topics']['Row']
+type SystemLog = Database['public']['Tables']['system_logs']['Row']
+
+interface PostStatusBadge {
+  label: string
+  className: string
+}
+
+function getPostStatusBadge(status: ContentStatus, scheduledFor: string | null): PostStatusBadge {
+  if (status === 'published') {
+    return {
+      label: 'Terbit',
+      className: 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20',
+    }
+  }
+  if (status === 'ready') {
+    if (scheduledFor) {
+      return {
+        label: 'Terjadwal',
+        className: 'bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-500/20',
+      }
+    }
+    return {
+      label: 'Draf',
+      className: 'bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20',
+    }
+  }
+  if (status === 'generating') {
+    return {
+      label: 'Membuat Konten',
+      className: 'bg-purple-500/10 text-purple-600 dark:text-purple-400 border border-purple-500/20',
+    }
+  }
+  if (status === 'publishing') {
+    return {
+      label: 'Menerbitkan',
+      className: 'bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 border border-indigo-500/20',
+    }
+  }
+  if (status === 'failed') {
+    return {
+      label: 'Gagal',
+      className: 'bg-destructive/10 text-destructive border border-destructive/20',
+    }
+  }
+  if (status === 'skipped') {
+    return {
+      label: 'Dilewati',
+      className: 'bg-muted text-muted-foreground border border-border',
+    }
+  }
+  if (status === 'publish_unknown') {
+    return {
+      label: 'Status Belum Pasti',
+      className: 'bg-destructive/10 text-destructive border border-destructive/20',
+    }
+  }
+  return {
+    label: status,
+    className: 'bg-muted text-muted-foreground border border-border',
+  }
+}
 
 export default async function DashboardPage() {
   const supabase = await createClient()
+  const now = new Date()
+  const nowIso = now.toISOString()
+  const today = getTodayDateWIB()
+  const firstDayOfMonth = `${today.slice(0, 7)}-01T00:00:00+07:00`
+  const thirtyDaysAgo = new Date(`${today}T00:00:00+07:00`)
+  thirtyDaysAgo.setUTCDate(thirtyDaysAgo.getUTCDate() - 29)
+  const thirtyDaysAgoIso = thirtyDaysAgo.toISOString()
 
-  const firstDayOfMonth = `${new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Jakarta', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date()).slice(0, 7)}-01T00:00:00+07:00`
-  const [settingsResult, publishedResult, readyResult, countResult, latestResult, runResult, accountResult, heartbeatResult, insights] = await Promise.all([
+  const [
+    settingsResult,
+    countResult,
+    recentResult,
+    slotResult,
+    accountResult,
+    heartbeatResult,
+    published30Result,
+    upcomingReadyResult,
+    topicsResult,
+    insights,
+  ] = await Promise.all([
     supabase.from('app_settings').select('*').eq('singleton', true).single(),
-    supabase.from('content_posts').select('*').eq('status', 'published').order('published_at', { ascending: false }).limit(1).maybeSingle(),
-    supabase.from('content_posts').select('*').in('status', ['ready', 'generating']).not('scheduled_for', 'is', null).order('scheduled_for', { ascending: true }).limit(1).maybeSingle(),
-    supabase.from('content_posts').select('*', { count: 'exact', head: true }).eq('status', 'published').gte('published_at', firstDayOfMonth),
-    supabase.from('content_posts').select('*').order('created_at', { ascending: false }).limit(1).maybeSingle(),
-    supabase.from('automation_runs').select('*').order('started_at', { ascending: false }).limit(1).maybeSingle(),
-    supabase.from('social_accounts').select('username, is_active, token_expires_at, granted_scopes').eq('is_active', true).maybeSingle(),
-    supabase.from('system_logs').select('created_at').eq('event', 'automation_heartbeat').order('created_at', { ascending: false }).limit(1).maybeSingle(),
-    getThreadsInsights().catch((): ThreadsInsightsData => ({ status: 'error', message: 'Tidak dapat memuat insight saat ini.' })),
+    supabase
+      .from('content_posts')
+      .select('id', { count: 'exact', head: true })
+      .eq('status', 'published')
+      .gte('published_at', firstDayOfMonth)
+      .lte('published_at', nowIso),
+    supabase
+      .from('content_posts')
+      .select('*')
+      .order('created_at', { ascending: false })
+      .limit(6),
+    supabase
+      .from('schedule_slots')
+      .select('*')
+      .eq('lifecycle', 'scheduled')
+      .gte('scheduled_for', nowIso)
+      .order('scheduled_for', { ascending: true })
+      .limit(1)
+      .maybeSingle(),
+    supabase
+      .from('social_accounts')
+      .select('*')
+      .eq('platform', 'threads')
+      .eq('is_active', true)
+      .maybeSingle(),
+    supabase
+      .from('system_logs')
+      .select('*')
+      .eq('event', 'automation_heartbeat')
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle(),
+    supabase
+      .from('content_posts')
+      .select('id, status, scheduled_for, published_at, content_type, topic_id, pillar')
+      .eq('status', 'published')
+      .gte('published_at', thirtyDaysAgoIso)
+      .lte('published_at', nowIso),
+    supabase
+      .from('content_posts')
+      .select('id, status, scheduled_for, published_at, content_type, topic_id, pillar')
+      .eq('status', 'ready')
+      .gte('scheduled_for', nowIso),
+    supabase.from('content_topics').select('id, name, slug'),
+    getThreadsInsights().catch(
+      (): ThreadsInsightsData => ({
+        status: 'error',
+        message: 'Insight Threads belum dapat dimuat saat ini.',
+      })
+    ),
   ])
-  const activityResult = await supabase.from('content_posts').select('status,scheduled_for,published_at,content_type').or(`scheduled_for.gte.${new Date(Date.now() - 31 * 86400000).toISOString()},published_at.gte.${new Date(Date.now() - 31 * 86400000).toISOString()}`)
+
   const settings = settingsResult.data as AppSettings | null
-  const lastPublishedPost = publishedResult.data as ContentPost | null
-  const nextReadyPost = readyResult.data as ContentPost | null
-  const monthlyPublishedCount = countResult.count
-  const latestPost = latestResult.data as ContentPost | null
-  const latestRun = runResult.data as AutomationRun | null
-  const account = accountResult.data as { username: string | null; is_active: boolean; token_expires_at: string | null; granted_scopes: string[] } | null
-  const heartbeat = heartbeatResult.data as { created_at: string } | null
+  const recentPosts = (recentResult.data as ContentPost[] | null) || []
+  const nextSlot = slotResult.data as ScheduleSlot | null
+  const nextPostResult = nextSlot
+    ? await supabase.from('content_posts').select('id, status').eq('slot_id', nextSlot.id).maybeSingle()
+    : null
+  const nextPost = nextPostResult?.data as Pick<ContentPost, 'id' | 'status'> | null | undefined
+  const account = accountResult.data as SocialAccount | null
+  const heartbeat = heartbeatResult.data as SystemLog | null
+  const published30Posts = (published30Result.data as ContentPost[] | null) || []
+  const upcomingReadyPosts = (upcomingReadyResult.data as ContentPost[] | null) || []
+  const topics = (topicsResult.data as ContentTopic[] | null) || []
 
   const automationActive = settings?.automation_enabled ?? false
   const publishLive = process.env.THREADS_PUBLISH_MODE === 'live'
-  const tokenExpired = account?.token_expires_at ? Date.parse(account.token_expires_at) <= Date.now() : true
-  const heartbeatFresh = heartbeat?.created_at ? Date.now() - Date.parse(heartbeat.created_at) < 5 * 60_000 : false
+  const tokenValid =
+    !!account?.token_expires_at && Date.parse(account.token_expires_at) > now.getTime()
+  const heartbeatTimestamp = heartbeat?.created_at
+  const heartbeatFresh =
+    !!heartbeatTimestamp && now.getTime() - Date.parse(heartbeatTimestamp) < 5 * 60_000
 
-  const dataUnavailable = [settingsResult, publishedResult, readyResult, countResult, latestResult, runResult, accountResult, heartbeatResult].some(result => result.error)
-  if (dataUnavailable) {
-    return (
-      <div className="space-y-4">
-        <h1 className="text-2xl font-bold">Ikhtisar Otomatisasi</h1>
-        <p role="alert" className="text-sm text-destructive">Status dashboard tidak tersedia karena sebagian data gagal dimuat. Muat ulang halaman untuk mencoba lagi.</p>
-        <Link href="/dashboard" className="inline-block text-sm text-primary underline">Muat ulang dashboard</Link>
-      </div>
-    )
+  // Combine published past posts + upcoming ready posts for ActivityChart
+  const activityPosts: ActivityPost[] = [
+    ...published30Posts.map((p) => ({
+      status: p.status,
+      scheduled_for: p.scheduled_for,
+      published_at: p.published_at,
+      content_type: p.content_type,
+    })),
+    ...upcomingReadyPosts.map((p) => ({
+      status: p.status,
+      scheduled_for: p.scheduled_for,
+      published_at: p.published_at,
+      content_type: p.content_type,
+    })),
+  ]
+  const activityUnavailable = !!published30Result.error || !!upcomingReadyResult.error
+
+  // Actionable warnings for unhealthy worker / token / dry-run / paused
+  const warnings: Array<{ id: string; title: string; message: string; href: string; action: string }> = []
+
+  if (!account || !account.is_active || !tokenValid) {
+    warnings.push({
+      id: 'token',
+      title: 'Koneksi Threads Perlu Perhatian',
+      message: !account
+        ? 'Akun Threads belum terhubung. Hubungkan akun di Pengaturan untuk mengaktifkan otomatisasi.'
+        : !tokenValid
+        ? 'Token akses akun Threads telah kedaluwarsa. Lakukan refresh atau hubungkan ulang akun.'
+        : 'Akun Threads saat ini nonaktif.',
+      href: '/settings',
+      action: 'Kelola Akun di Pengaturan',
+    })
   }
 
+  if (!automationActive) {
+    warnings.push({
+      id: 'paused',
+      title: 'Otomatisasi Sedang Dijeda',
+      message:
+        'Siklus pembuatan konten dan penerbitan terjadwal dinonaktifkan sementara. Tidak ada postingan yang akan dibuat atau diterbitkan secara otomatis.',
+      href: '/settings',
+      action: 'Aktifkan Otomatisasi',
+    })
+  }
+
+  if (!publishLive) {
+    warnings.push({
+      id: 'dry-run',
+      title: 'Mode Simulasi (Dry-Run) Aktif',
+      message:
+        'Sistem berjalan dalam mode simulasi. Generasi draf berjalan, tetapi postingan tidak akan dipublikasikan ke Meta Threads nyata.',
+      href: '/settings',
+      action: 'Periksa Pengaturan',
+    })
+  }
+
+  if (!heartbeatFresh) {
+    warnings.push({
+      id: 'worker',
+      title: 'Worker Otomatisasi Standby',
+      message: heartbeatTimestamp
+        ? `Sinyal heartbeat worker terakhir diterima pada ${formatDateWIB(heartbeatTimestamp)} WIB (> 5 menit lalu). Worker dipicu oleh Supabase Cron saat siklus aktif.`
+        : 'Belum ada sinyal heartbeat worker yang tercatat di sistem.',
+      href: '/logs',
+      action: 'Lihat System Logs',
+    })
+  }
+
+  // Topic distribution calculation for published posts in the last 30 days
+  const topicMap = new Map<string, string>()
+  topics.forEach((t) => topicMap.set(t.id, t.name))
+
+  const topicCountMap = new Map<string, { label: string; count: number }>()
+  published30Posts.forEach((post) => {
+    const topicKey = post.topic_id || post.pillar || 'Lainnya'
+    const topicLabel = post.topic_id
+      ? topicMap.get(post.topic_id) || post.pillar || 'Topik Kustom'
+      : post.pillar || 'Umum'
+
+    const existing = topicCountMap.get(topicKey)
+    if (existing) {
+      existing.count += 1
+    } else {
+      topicCountMap.set(topicKey, { label: topicLabel, count: 1 })
+    }
+  })
+
+  const topicDistribution = Array.from(topicCountMap.values()).sort((a, b) => b.count - a.count)
+  const published30Total = published30Posts.length
+
+  // KPI calculations
+  const monthlyPublishedCount = countResult.count ?? 0
+
+  const followersCount =
+    insights.profile?.followers_count ?? insights.metrics?.followersCount
+  const viewsCount = insights.metrics?.views
+
   return (
-    <div className="space-y-8">
-      {/* Page Title & Status Banner */}
-      <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-center">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight text-foreground sm:text-3xl">
-            Ikhtisar Otomatisasi
-          </h1>
-          <p className="mt-1 text-sm text-muted-foreground">
-            Status mesin konten harian Threads (Target rilis {settings?.posting_time ? `${settings.posting_time.slice(0, 5)} WIB` : '19:00 WIB'}).
-          </p>
-        </div>
-
-        <div className="flex flex-wrap items-center gap-2.5">
-          <DashboardPreviewAction />
-          <span
-            className={`inline-flex items-center gap-2 rounded-xl px-3.5 py-1.5 text-xs font-semibold ${
-              automationActive
-                ? 'bg-emerald-500/10 text-emerald-500 border border-emerald-500/20'
-                : 'bg-amber-500/10 text-amber-500 border border-amber-500/20'
-            }`}
-          >
-            <span
-              className={`h-2 w-2 rounded-full ${
-                automationActive ? 'bg-emerald-500 animate-pulse' : 'bg-amber-500'
-              }`}
-            />
-            {automationActive ? 'Otomatisasi Aktif' : 'Otomatisasi Nonaktif (Paused)'}
-          </span>
-        </div>
-      </div>
-
-      {/* Connected Account & Profile Card */}
-      <div className="rounded-2xl border border-border bg-card p-5 shadow-sm">
+    <div className="space-y-6">
+      {/* Compact Account Header */}
+      <section className="rounded-2xl border border-border bg-card p-5 shadow-sm">
         <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-          <div className="flex items-center gap-4">
+          <div className="flex items-center gap-3.5 min-w-0">
+            {/* Avatar or Initials */}
             <div className="relative shrink-0">
               {insights.profile?.threads_profile_picture_url ? (
                 <img
                   src={insights.profile.threads_profile_picture_url}
                   alt={insights.profile.name || account?.username || 'Threads'}
-                  className="h-14 w-14 rounded-full border-2 border-primary/20 object-cover shadow-sm"
+                  className="h-12 w-12 rounded-full border border-border object-cover"
                 />
               ) : (
-                <div className="flex h-14 w-14 items-center justify-center rounded-full bg-primary/10 text-xl font-bold text-primary border-2 border-primary/20 shadow-sm">
-                  {(insights.profile?.username || account?.username || 'T').slice(0, 2).toUpperCase()}
+                <div className="flex h-12 w-12 items-center justify-center rounded-full bg-primary/10 text-base font-bold text-primary border border-primary/20">
+                  {(insights.profile?.username || account?.username || 'TH').slice(0, 2).toUpperCase()}
                 </div>
               )}
               <span
-                className={`absolute bottom-0 right-0 h-4 w-4 rounded-full border-2 border-card ${
-                  account?.is_active && !tokenExpired ? 'bg-emerald-500' : 'bg-destructive'
+                className={`absolute bottom-0 right-0 h-3 w-3 rounded-full border-2 border-card ${
+                  account?.is_active && tokenValid ? 'bg-emerald-500' : 'bg-destructive'
                 }`}
+                title={account?.is_active && tokenValid ? 'Akun aktif' : 'Perlu perhatian'}
               />
             </div>
+
+            {/* Account Info */}
             <div className="min-w-0">
               <div className="flex flex-wrap items-center gap-2">
-                <h2 className="text-lg font-bold text-foreground truncate">
-                  {insights.profile?.name || account?.username || 'Akun Threads'}
-                </h2>
+                <h1 className="text-base font-bold text-foreground truncate">
+                  {insights.profile?.name || (account?.username ? `@${account.username}` : 'Akun Threads')}
+                </h1>
                 {account?.username && (
                   <a
                     href={`https://www.threads.net/@${account.username}`}
                     target="_blank"
-                    rel="noreferrer"
-                    className="inline-flex items-center gap-1 rounded-full bg-muted px-2.5 py-0.5 text-xs font-mono font-medium text-primary hover:underline"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1 rounded-md bg-muted px-2 py-0.5 text-xs font-mono text-muted-foreground hover:text-foreground transition-colors"
                   >
                     @{account.username}
                     <ExternalLink className="h-3 w-3" />
                   </a>
                 )}
                 <span
-                  className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold ${
-                    account?.is_active && !tokenExpired
-                      ? 'bg-emerald-500/10 text-emerald-500'
+                  className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold ${
+                    account?.is_active && tokenValid
+                      ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400'
                       : 'bg-destructive/10 text-destructive'
                   }`}
                 >
-                  <span className={`h-1.5 w-1.5 rounded-full ${account?.is_active && !tokenExpired ? 'bg-emerald-500' : 'bg-destructive'}`} />
-                  {account?.is_active && !tokenExpired ? 'Terhubung & Aktif' : 'Perlu Hubungkan Ulang'}
+                  {account?.is_active && tokenValid ? 'Terhubung & Aktif' : 'Perlu Perhatian'}
                 </span>
               </div>
-              {insights.profile?.threads_biography && (
-                <p className="mt-1 text-xs text-muted-foreground line-clamp-1">
-                  {insights.profile.threads_biography}
-                </p>
-              )}
-              <div className="mt-2 flex flex-wrap items-center gap-3 text-xs text-muted-foreground font-mono">
-                <span className="flex items-center gap-1.5 font-bold text-foreground">
-                  <Users className="h-3.5 w-3.5 text-primary" />
-                  {(insights.profile?.followers_count ?? insights.metrics?.followersCount ?? 0).toLocaleString('id-ID')}
-                  <span className="font-normal text-muted-foreground">Follower</span>
-                </span>
-                <span>•</span>
+              <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
                 <span>
-                  Token: {account?.token_expires_at ? `Aktif s/d ${formatDateWIB(account.token_expires_at)}` : 'Tidak aktif'}
+                  Mode:{' '}
+                  <strong className="font-semibold text-foreground">
+                    {publishLive ? 'Live Publikasi' : 'Dry-Run'}
+                  </strong>
                 </span>
-                <span>•</span>
-                <span className="text-[11px] text-muted-foreground/80">
-                  Mode: <strong className="text-foreground">{publishLive ? 'Live Publikasi' : 'Dry-Run'}</strong>
+                <span>·</span>
+                <span>
+                  Otomatisasi:{' '}
+                  <strong className="font-semibold text-foreground">
+                    {automationActive ? 'Aktif' : 'Dijeda'}
+                  </strong>
                 </span>
+                {account?.token_expires_at && (
+                  <>
+                    <span>·</span>
+                    <span className="truncate">
+                      Token s/d {formatDateWIB(account.token_expires_at)}
+                    </span>
+                  </>
+                )}
               </div>
             </div>
           </div>
-          <div className="flex items-center gap-2 self-start sm:self-center">
+
+          {/* Quick Actions */}
+          <div className="flex flex-wrap items-center gap-2 self-start sm:self-center shrink-0">
+            <DashboardPreviewAction />
+            <Link
+              href="/posts/new"
+              className="inline-flex items-center gap-1.5 rounded-xl bg-primary px-3.5 py-2 text-xs font-semibold text-primary-foreground shadow-sm transition hover:bg-primary/90"
+            >
+              Buat Postingan
+            </Link>
             <Link
               href="/settings"
-              className="rounded-xl border border-border bg-background px-3.5 py-2 text-xs font-semibold text-foreground hover:bg-muted/50 transition"
+              className="inline-flex items-center rounded-xl border border-border bg-background px-3 py-2 text-xs font-medium text-foreground transition hover:bg-muted"
             >
-              Kelola Akun
+              Pengaturan
             </Link>
           </div>
         </div>
-      </div>
+      </section>
 
-      {/* 6 Metric Cards */}
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        {/* Card 1: Status Otomatisasi */}
-        <div className="rounded-2xl border border-border bg-card p-5 shadow-sm transition-all hover:border-border/80">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-              Jadwal Harian
-            </span>
-            <div className="rounded-xl bg-primary/10 p-2.5 text-primary">
-              <Clock className="h-4 w-4" />
+      {/* Actionable Warnings for Unhealthy States */}
+      {warnings.length > 0 && (
+        <section aria-label="Peringatan Status Sistem" className="space-y-2.5">
+          {warnings.map((w) => (
+            <div
+              key={w.id}
+              className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 rounded-2xl border border-amber-500/30 bg-amber-500/5 p-4"
+            >
+              <div className="flex items-start gap-3">
+                <AlertTriangle className="h-4 w-4 text-amber-500 shrink-0 mt-0.5" />
+                <div>
+                  <h2 className="text-xs font-bold text-foreground">{w.title}</h2>
+                  <p className="mt-0.5 text-xs text-muted-foreground leading-relaxed">
+                    {w.message}
+                  </p>
+                </div>
+              </div>
+              <Link
+                href={w.href}
+                className="inline-flex shrink-0 items-center justify-center rounded-xl border border-amber-500/30 bg-background px-3 py-1.5 text-xs font-semibold text-foreground transition hover:bg-amber-500/10"
+              >
+                {w.action} &rarr;
+              </Link>
             </div>
-          </div>
-          <div className="mt-4">
-            <div className="text-2xl font-bold text-foreground">
-              {settings?.posting_time ? `${settings.posting_time.slice(0, 5)} WIB` : '19:00 WIB'}
-            </div>
-            <p className="mt-1 text-xs text-muted-foreground">
-              Generasi mulai {settings?.generation_time ? `${settings.generation_time.slice(0, 5)} WIB` : '18:40 WIB'} ({settings?.timezone || 'Asia/Jakarta'})
-            </p>
-          </div>
-        </div>
+          ))}
+        </section>
+      )}
 
-        {/* Card 2: Postingan Terjadwal Berikutnya */}
-        <div className="rounded-2xl border border-border bg-card p-5 shadow-sm transition-all hover:border-border/80">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-              Antrean Berikutnya
-            </span>
-            <div className="rounded-xl bg-blue-500/10 p-2.5 text-blue-500">
-              <Calendar className="h-4 w-4" />
-            </div>
-          </div>
-          <div className="mt-4">
-            {nextReadyPost ? (
-              <div>
-                <div className="flex items-center gap-2">
-                  <span className="text-lg font-bold text-foreground truncate max-w-[200px]">
-                    {nextReadyPost.scheduled_date}
-                  </span>
-                  <span className="rounded-full bg-blue-500/10 px-2 py-0.5 text-[10px] font-semibold text-blue-500 uppercase">
-                    {nextReadyPost.status}
-                  </span>
-                </div>
-                <p className="mt-1 line-clamp-1 text-xs text-muted-foreground">
-                  {nextReadyPost.content}
-                </p>
-              </div>
-            ) : (
-              <div>
-                <div className="text-base font-semibold text-foreground">
-                  Belum ada antrean konten
-                </div>
-                <p className="mt-1 text-xs text-muted-foreground">
-                  Akan dibuat otomatis pada siklus generasi {settings?.generation_time ? `${settings.generation_time.slice(0, 5)} WIB` : '18:40 WIB'}.
-                </p>
-              </div>
-            )}
-          </div>
-        </div>
-
-        {/* Card 3: Postingan Terakhir Sukses */}
-        <div className="rounded-2xl border border-border bg-card p-5 shadow-sm transition-all hover:border-border/80">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-              Publikasi Terakhir
-            </span>
-            <div className="rounded-xl bg-emerald-500/10 p-2.5 text-emerald-500">
-              <CheckCircle2 className="h-4 w-4" />
-            </div>
-          </div>
-          <div className="mt-4">
-            {lastPublishedPost ? (
-              <div>
-                <div className="text-sm font-bold text-foreground">
-                  {lastPublishedPost.published_at ? formatDateWIB(lastPublishedPost.published_at) : lastPublishedPost.scheduled_date}
-                </div>
-                <p className="mt-1 line-clamp-1 text-xs text-muted-foreground">
-                  &ldquo;{lastPublishedPost.content}&rdquo;
-                </p>
-              </div>
-            ) : (
-              <div>
-                <div className="text-base font-semibold text-foreground">
-                  Belum ada postingan terbit
-                </div>
-                <p className="mt-1 text-xs text-muted-foreground">
-                  Postingan pertama akan muncul setelah publikasi live.
-                </p>
-              </div>
-            )}
-          </div>
-        </div>
-
-        {/* Card 4: Terbit Bulan Ini */}
-        <div className="rounded-2xl border border-border bg-card p-5 shadow-sm transition-all hover:border-border/80">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+      {/* 4 KPI Cards */}
+      <section aria-label="Indikator Utama" className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        {/* KPI 1: Terbit Bulan Ini */}
+        <div className="rounded-2xl border border-border bg-card p-5 shadow-sm">
+          <div className="flex items-center justify-between text-muted-foreground">
+            <span className="text-xs font-semibold uppercase tracking-wider">
               Terbit Bulan Ini
             </span>
-            <div className="rounded-xl bg-purple-500/10 p-2.5 text-purple-500">
+            <div className="rounded-xl bg-purple-500/10 p-2 text-purple-500">
               <Send className="h-4 w-4" />
             </div>
           </div>
-          <div className="mt-4">
-            <div className="text-2xl font-bold text-foreground">
-              {countResult.error ? 'N/A' : (monthlyPublishedCount ?? 0)} <span className="text-sm font-normal text-muted-foreground">post</span>
+          <div className="mt-3">
+            <div className="text-2xl font-bold tracking-tight text-foreground">
+              {countResult.error ? (
+                <span className="text-sm font-normal text-muted-foreground">Tidak tersedia</span>
+              ) : (
+                `${monthlyPublishedCount.toLocaleString('id-ID')} post`
+              )}
             </div>
             <p className="mt-1 text-xs text-muted-foreground">
-              Target ritme: 1 post per hari kalender Asia/Jakarta.
+              Periode {today.slice(0, 7)} · Waktu lokal WIB
             </p>
           </div>
         </div>
 
-        {/* Card 5: Hasil Generasi AI Terakhir */}
-        <div className="rounded-2xl border border-border bg-card p-5 shadow-sm transition-all hover:border-border/80">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-              Generasi Konten Terakhir
+        {/* KPI 2: Followers */}
+        <div className="rounded-2xl border border-border bg-card p-5 shadow-sm">
+          <div className="flex items-center justify-between text-muted-foreground">
+            <span className="text-xs font-semibold uppercase tracking-wider">
+              Followers
             </span>
-            <div className="rounded-xl bg-amber-500/10 p-2.5 text-amber-500">
-              <Sparkles className="h-4 w-4" />
+            <div className="rounded-xl bg-primary/10 p-2 text-primary">
+              <Users className="h-4 w-4" />
             </div>
           </div>
-          <div className="mt-4">
-            {latestPost ? (
+          <div className="mt-3">
+            <div className="text-2xl font-bold tracking-tight text-foreground">
+              {insights.status === 'ok' && followersCount !== undefined ? (
+                followersCount.toLocaleString('id-ID')
+              ) : insights.status === 'scope_missing' ? (
+                <span className="text-sm font-semibold text-amber-600 dark:text-amber-400">
+                  Perlu izin
+                </span>
+              ) : (
+                <span className="text-sm font-normal text-muted-foreground">Tidak tersedia</span>
+              )}
+            </div>
+            <p className="mt-1 text-xs text-muted-foreground">
+              {insights.status === 'ok'
+                ? `Pengikut resmi @${account?.username || 'threads'}`
+                : insights.status === 'scope_missing'
+                ? 'Izin threads_manage_insights belum aktif'
+                : 'Data profil Threads belum terhubung'}
+            </p>
+          </div>
+        </div>
+
+        {/* KPI 3: Views */}
+        <div className="rounded-2xl border border-border bg-card p-5 shadow-sm">
+          <div className="flex items-center justify-between text-muted-foreground">
+            <span className="text-xs font-semibold uppercase tracking-wider">
+              Views (Tayangan)
+            </span>
+            <div className="rounded-xl bg-blue-500/10 p-2 text-blue-500">
+              <Eye className="h-4 w-4" />
+            </div>
+          </div>
+          <div className="mt-3">
+            <div className="text-2xl font-bold tracking-tight text-foreground">
+              {insights.status === 'ok' && viewsCount !== undefined ? (
+                viewsCount.toLocaleString('id-ID')
+              ) : insights.status === 'scope_missing' ? (
+                <span className="text-sm font-semibold text-amber-600 dark:text-amber-400">
+                  Perlu izin
+                </span>
+              ) : (
+                <span className="text-sm font-normal text-muted-foreground">Tidak tersedia</span>
+              )}
+            </div>
+            <p className="mt-1 text-xs text-muted-foreground">
+              {insights.status === 'ok'
+                ? 'Agregat tayangan resmi Meta API'
+                : insights.status === 'scope_missing'
+                ? 'Hubungkan ulang akun untuk metrik view'
+                : 'Belum ada data insight'}
+            </p>
+          </div>
+        </div>
+
+        {/* KPI 4: Slot Berikutnya (derived from actual schedule_slots) */}
+        <div className="rounded-2xl border border-border bg-card p-5 shadow-sm">
+          <div className="flex items-center justify-between text-muted-foreground">
+            <span className="text-xs font-semibold uppercase tracking-wider">
+              Slot Berikutnya
+            </span>
+            <div className="rounded-xl bg-emerald-500/10 p-2 text-emerald-500">
+              <Calendar className="h-4 w-4" />
+            </div>
+          </div>
+          <div className="mt-3">
+            {slotResult.error ? (
+              <div className="text-sm text-destructive">Gagal memuat slot</div>
+            ) : nextSlot ? (
               <div>
-                <div className="flex items-center gap-2">
-                  <span className="rounded-md bg-muted px-1.5 py-0.5 text-xs font-medium text-foreground">
-                    {latestPost.pillar}
-                  </span>
-                  <span className="flex items-center gap-1 text-xs text-muted-foreground">
-                    {latestPost.content_type === 'image' ? (
-                      <ImageIcon className="h-3 w-3" />
-                    ) : (
-                      <FileText className="h-3 w-3" />
-                    )}
-                    {latestPost.content_type}
-                  </span>
+                <div className="text-base font-bold text-foreground">
+                  {formatDateWIB(nextSlot.scheduled_for)} WIB
                 </div>
-                <p className="mt-1 line-clamp-1 text-xs text-muted-foreground">
-                  {latestPost.content}
+                <p className="mt-1 text-xs text-muted-foreground truncate">
+                  {nextPostResult?.error ? (
+                    <span>Status draf tidak tersedia</span>
+                  ) : nextPost ? (
+                    <Link href={`/posts/${nextPost.id}`} className="font-medium text-primary hover:underline">
+                      {nextPost.status === 'ready' ? 'Draf siap untuk rilis' : getPostStatusBadge(nextPost.status, nextSlot.scheduled_for).label}
+                    </Link>
+                  ) : nextSlot.generate_after ? (
+                    <span>
+                      Generasi draf: {formatDateWIB(nextSlot.generate_after)} WIB
+                    </span>
+                  ) : (
+                    <span>Slot aktif ({nextSlot.source})</span>
+                  )}
                 </p>
               </div>
             ) : (
               <div>
                 <div className="text-base font-semibold text-foreground">
-                  Belum ada draf konten
+                  Belum ada slot
                 </div>
                 <p className="mt-1 text-xs text-muted-foreground">
-                  Draf harian dibuat otomatis saat jadwal generasi atau dapat dipicu manual.
+                  Kelola jadwal di menu Kalender
                 </p>
               </div>
             )}
           </div>
         </div>
+      </section>
 
-        {/* Card 6: Status Eksekusi Terakhir */}
-        <div className="rounded-2xl border border-border bg-card p-5 shadow-sm transition-all hover:border-border/80">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-              Status Run Otomatisasi
-            </span>
-            <div className="rounded-xl bg-teal-500/10 p-2.5 text-teal-500">
-              <Activity className="h-4 w-4" />
-            </div>
-          </div>
-          <div className="mt-4">
-            {latestRun ? (
-              <div>
-                <div className="flex items-center gap-2">
-                  <span className="text-sm font-bold text-foreground">
-                    {latestRun.run_date}
-                  </span>
-                  <span className="rounded-full bg-teal-500/10 px-2 py-0.5 text-[10px] font-semibold text-teal-500 uppercase">
-                    {latestRun.status}
-                  </span>
-                </div>
-                <p className="mt-1 text-xs text-muted-foreground">
-                  Tahap: {latestRun.current_stage}
-                </p>
-              </div>
-            ) : (
-              <div>
-                <div className="text-base font-semibold text-foreground">
-                  Belum ada riwayat run
-                </div>
-                <p className="mt-1 text-xs text-muted-foreground">
-                  Riwayat generasi dicatat otomatis saat siklus worker berjalan.
-                </p>
-              </div>
-            )}
-          </div>
-        </div>
-      </div>
+      {/* Activity Chart (Past 7/30 days published + active today queue) */}
+      <ActivityChart
+        posts={activityPosts}
+        today={today}
+        unavailable={activityUnavailable}
+      />
 
-      <ActivityChart posts={activityResult.data || []} today={getTodayDateWIB()} unavailable={!!activityResult.error} />
-
-      {/* Threads Official Insights Section */}
-      <div className="rounded-2xl border border-border bg-card p-6 shadow-sm space-y-4">
-        <div className="flex flex-col justify-between gap-2 sm:flex-row sm:items-center">
+      {/* Recent 6 Posts with True Status Semantics */}
+      <section className="rounded-2xl border border-border bg-card p-5 shadow-sm">
+        <div className="flex items-center justify-between gap-3">
           <div>
-            <h2 className="text-base font-semibold text-foreground flex items-center gap-2">
-              <TrendingUp className="h-4 w-4 text-primary" />
-              Insight &amp; Metrik Akun Threads
-            </h2>
-            <p className="mt-0.5 text-xs text-muted-foreground">
-              Data resmi langsung dari Meta Threads API (@{account?.username || 'threads'}). Cache server 30 menit untuk menjaga kuota rate limit.
+            <h2 className="text-base font-semibold text-foreground">Postingan Terbaru</h2>
+            <p className="text-xs text-muted-foreground">
+              Enam postingan terbaru berdasarkan waktu pembuatan draf.
             </p>
           </div>
-          {('cachedAt' in insights && insights.cachedAt) && (
-            <span className="text-[11px] font-mono text-muted-foreground">
-              Diperbarui: {formatDateWIB(insights.cachedAt)}
-            </span>
-          )}
+          <Link
+            href="/posts"
+            className="text-xs font-semibold text-primary hover:underline"
+          >
+            Lihat semua &rarr;
+          </Link>
         </div>
 
-        {insights.status === 'ok' && insights.metrics ? (
-          <div className="grid gap-3 grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 pt-2">
-            <div className="rounded-xl border border-border/70 bg-muted/20 p-3.5">
-              <div className="flex items-center justify-between text-muted-foreground">
-                <span className="text-xs font-semibold">Followers</span>
-                <Users className="h-3.5 w-3.5 text-primary" />
-              </div>
-              <div className="mt-2 text-xl font-bold font-mono text-foreground">
-                {(insights.metrics.followersCount ?? insights.profile?.followers_count ?? 0).toLocaleString('id-ID')}
-              </div>
-              <p className="mt-0.5 text-[10px] text-muted-foreground">Pengikut akun Threads</p>
-            </div>
-
-            <div className="rounded-xl border border-border/70 bg-muted/20 p-3.5">
-              <div className="flex items-center justify-between text-muted-foreground">
-                <span className="text-xs font-semibold">Views (Tayangan)</span>
-                <Eye className="h-3.5 w-3.5 text-blue-500" />
-              </div>
-              <div className="mt-2 text-xl font-bold font-mono text-foreground">
-                {insights.metrics.views.toLocaleString('id-ID')}
-              </div>
-              <p className="mt-0.5 text-[10px] text-muted-foreground">Total impresi postingan</p>
-            </div>
-
-            <div className="rounded-xl border border-border/70 bg-muted/20 p-3.5">
-              <div className="flex items-center justify-between text-muted-foreground">
-                <span className="text-xs font-semibold">Likes (Suka)</span>
-                <Heart className="h-3.5 w-3.5 text-rose-500" />
-              </div>
-              <div className="mt-2 text-xl font-bold font-mono text-foreground">
-                {insights.metrics.likes.toLocaleString('id-ID')}
-              </div>
-              <p className="mt-0.5 text-[10px] text-muted-foreground">Total apresiasi suka</p>
-            </div>
-
-            <div className="rounded-xl border border-border/70 bg-muted/20 p-3.5">
-              <div className="flex items-center justify-between text-muted-foreground">
-                <span className="text-xs font-semibold">Replies (Balasan)</span>
-                <MessageCircle className="h-3.5 w-3.5 text-emerald-500" />
-              </div>
-              <div className="mt-2 text-xl font-bold font-mono text-foreground">
-                {insights.metrics.replies.toLocaleString('id-ID')}
-              </div>
-              <p className="mt-0.5 text-[10px] text-muted-foreground">Komentar &amp; diskusi</p>
-            </div>
-
-            <div className="rounded-xl border border-border/70 bg-muted/20 p-3.5">
-              <div className="flex items-center justify-between text-muted-foreground">
-                <span className="text-xs font-semibold">Reposts</span>
-                <Repeat className="h-3.5 w-3.5 text-purple-500" />
-              </div>
-              <div className="mt-2 text-xl font-bold font-mono text-foreground">
-                {insights.metrics.reposts.toLocaleString('id-ID')}
-              </div>
-              <p className="mt-0.5 text-[10px] text-muted-foreground">Dibagikan pengguna lain</p>
-            </div>
-
-            <div className="rounded-xl border border-border/70 bg-muted/20 p-3.5">
-              <div className="flex items-center justify-between text-muted-foreground">
-                <span className="text-xs font-semibold">Quotes (Kutipan)</span>
-                <Quote className="h-3.5 w-3.5 text-amber-500" />
-              </div>
-              <div className="mt-2 text-xl font-bold font-mono text-foreground">
-                {insights.metrics.quotes.toLocaleString('id-ID')}
-              </div>
-              <p className="mt-0.5 text-[10px] text-muted-foreground">Dikutip dengan komentar</p>
-            </div>
-          </div>
-        ) : insights.status === 'scope_missing' ? (
-          <div className="rounded-xl border border-amber-500/20 bg-amber-500/5 p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-            <div className="flex items-start gap-3">
-              <ShieldAlert className="h-5 w-5 text-amber-500 shrink-0 mt-0.5" />
-              <div>
-                <p className="text-xs font-bold text-foreground">
-                  Izin Insight (threads_manage_insights) Belum Diberikan
-                </p>
-                <p className="mt-0.5 text-xs text-muted-foreground">
-                  Akun @{account?.username} saat ini terhubung untuk publikasi. Untuk mengaktifkan metrik views, likes, dan interaksi resmi Meta di sini, silakan hubungkan ulang akun di Pengaturan.
-                </p>
-              </div>
-            </div>
+        {recentResult.error ? (
+          <p role="alert" className="mt-4 text-sm text-destructive">
+            Gagal memuat postingan: {recentResult.error.message}
+          </p>
+        ) : recentPosts.length === 0 ? (
+          <div className="py-8 text-center">
+            <p className="text-sm text-muted-foreground">
+              Belum ada postingan yang dibuat.
+            </p>
             <Link
-              href="/settings"
-              className="inline-flex shrink-0 items-center gap-1.5 rounded-xl bg-amber-500/10 px-3.5 py-2 text-xs font-semibold text-amber-600 hover:bg-amber-500/20 transition-colors"
+              href="/posts/new"
+              className="mt-2 inline-block text-xs font-semibold text-primary underline"
             >
-              Buka Pengaturan
-            </Link>
-          </div>
-        ) : insights.status === 'not_connected' ? (
-          <div className="rounded-xl border border-border/80 bg-muted/20 p-4 text-xs text-muted-foreground flex items-center justify-between">
-            <span>Hubungkan akun Threads di Pengaturan untuk memantau metrik performa secara live.</span>
-            <Link href="/settings" className="text-primary font-semibold hover:underline">
-              Hubungkan &rarr;
+              Mulai buat postingan baru
             </Link>
           </div>
         ) : (
-          <div className="rounded-xl border border-border/80 bg-muted/20 p-4 text-xs text-muted-foreground">
-            {insights.message || 'Data insight belum tersedia atau akun belum memiliki aktivitas publikasi yang cukup.'}
+          <div className="mt-4 divide-y divide-border">
+            {recentPosts.map((post) => {
+              const badge = getPostStatusBadge(post.status, post.scheduled_for)
+              const hasRealPermalink =
+                post.threads_permalink &&
+                typeof post.threads_permalink === 'string' &&
+                post.threads_permalink.startsWith('http')
+
+              return (
+                <div
+                  key={post.id}
+                  className="flex flex-col justify-between gap-3 py-3.5 sm:flex-row sm:items-start"
+                >
+                  <div className="min-w-0 space-y-1.5 flex-1">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span
+                        className={`inline-flex rounded-full px-2 py-0.5 text-[11px] font-semibold ${badge.className}`}
+                      >
+                        {badge.label}
+                      </span>
+                      {post.pillar && (
+                        <span className="rounded-md bg-muted px-2 py-0.5 text-[11px] font-medium text-muted-foreground">
+                          {post.pillar}
+                        </span>
+                      )}
+                      <span className="text-[11px] text-muted-foreground">
+                        {post.content_type === 'image' ? 'Teks + Gambar' : 'Teks'}
+                      </span>
+                    </div>
+
+                    <Link
+                      href={`/posts/${post.id}`}
+                      className="block text-sm font-medium text-foreground hover:text-primary transition-colors line-clamp-2"
+                    >
+                      {post.content || 'Konten draf belum tersedia'}
+                    </Link>
+
+                    <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[11px] text-muted-foreground">
+                      {post.status === 'published' && post.published_at ? (
+                        <span>Terbit: {formatDateWIB(post.published_at)} WIB</span>
+                      ) : post.scheduled_for ? (
+                        <span>
+                          Rencana rilis: {formatDateWIB(post.scheduled_for)} WIB
+                          {Date.parse(post.scheduled_for) < now.getTime() &&
+                            post.status !== 'published' && (
+                              <span className="text-amber-500 font-medium"> (Jadwal lewat)</span>
+                            )}
+                        </span>
+                      ) : (
+                        <span>Dibuat: {formatDateWIB(post.created_at)} WIB (Tanpa jadwal)</span>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Actions: Editor Link + Optional Threads Link */}
+                  <div className="flex shrink-0 items-center gap-3 text-xs sm:self-center">
+                    <Link
+                      href={`/posts/${post.id}`}
+                      className="font-semibold text-primary hover:underline"
+                    >
+                      {post.status === 'ready' ? 'Edit draf' : 'Detail'}
+                    </Link>
+
+                    {hasRealPermalink && (
+                      <a
+                        href={post.threads_permalink!}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-1 font-semibold text-primary hover:underline"
+                      >
+                        Buka Threads
+                        <ExternalLink className="h-3 w-3" />
+                      </a>
+                    )}
+                  </div>
+                </div>
+              )
+            })}
           </div>
         )}
+      </section>
+
+      {/* Two-Column Section: Topic Distribution (Last 30 Days) & Threads Engagement Breakdown */}
+      <div className="grid gap-6 lg:grid-cols-2">
+        {/* Topic Distribution of Published Posts (Last 30 Days) */}
+        <section className="rounded-2xl border border-border bg-card p-5 shadow-sm space-y-4">
+          <div>
+            <div className="flex items-center justify-between">
+              <h2 className="text-base font-semibold text-foreground flex items-center gap-2">
+                <Layers className="h-4 w-4 text-primary" />
+                Distribusi Topik Terbit
+              </h2>
+              <span className="text-xs font-mono text-muted-foreground">
+                30 Hari Terakhir
+              </span>
+            </div>
+            <p className="mt-0.5 text-xs text-muted-foreground">
+              Proporsi pilar konten dari {published30Total} postingan terbit (
+              {formatDateWIB(thirtyDaysAgoIso).slice(0, 11)} – {formatDateWIB(nowIso).slice(0, 11)}).
+            </p>
+          </div>
+
+          {published30Result.error ? (
+            <p role="alert" className="text-sm text-destructive">
+              Gagal memuat distribusi topik.
+            </p>
+          ) : published30Total === 0 ? (
+            <div className="py-8 text-center text-xs text-muted-foreground">
+              Belum ada postingan yang dipublikasikan dalam 30 hari terakhir.
+            </div>
+          ) : (
+            <div className="space-y-3 pt-1">
+              {topicDistribution.map((item) => {
+                const percent = Math.round((item.count / published30Total) * 100)
+                return (
+                  <div key={item.label} className="space-y-1.5">
+                    <div className="flex items-center justify-between text-xs">
+                      <span className="font-medium text-foreground">{item.label}</span>
+                      <span className="font-mono text-muted-foreground">
+                        {item.count} post ({percent}%)
+                      </span>
+                    </div>
+                    <div className="h-2 w-full overflow-hidden rounded-full bg-muted">
+                      <div
+                        className="h-full rounded-full bg-primary transition-all duration-300"
+                        style={{ width: `${percent}%` }}
+                      />
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          )}
+        </section>
+
+        {/* Engagement Breakdown from Official Aggregate Insights */}
+        <section className="rounded-2xl border border-border bg-card p-5 shadow-sm space-y-4">
+          <div className="flex items-start justify-between gap-2">
+            <div>
+              <h2 className="text-base font-semibold text-foreground flex items-center gap-2">
+                <Sparkles className="h-4 w-4 text-primary" />
+                Interaksi Akun Threads
+              </h2>
+              <p className="mt-0.5 text-xs text-muted-foreground">
+                Data resmi dari Meta Threads API. Angka mencerminkan total akumulasi akun saat ini.
+              </p>
+            </div>
+            {insights.cachedAt && (
+              <span className="text-[10px] font-mono text-muted-foreground shrink-0">
+                Cache: {formatDateWIB(insights.cachedAt)}
+              </span>
+            )}
+          </div>
+
+          {insights.status === 'ok' && insights.metrics ? (
+            <div className="grid grid-cols-2 gap-3 pt-1 sm:grid-cols-4">
+              {/* Likes */}
+              <div className="rounded-xl border border-border bg-muted/20 p-3">
+                <div className="flex items-center justify-between text-muted-foreground">
+                  <span className="text-xs font-semibold">Likes</span>
+                  <Heart className="h-3.5 w-3.5 text-rose-500" />
+                </div>
+                <div className="mt-2 text-lg font-bold font-mono text-foreground">
+                  {insights.metrics.likes.toLocaleString('id-ID')}
+                </div>
+                <p className="mt-0.5 text-[10px] text-muted-foreground">Total suka</p>
+              </div>
+
+              {/* Replies */}
+              <div className="rounded-xl border border-border bg-muted/20 p-3">
+                <div className="flex items-center justify-between text-muted-foreground">
+                  <span className="text-xs font-semibold">Replies</span>
+                  <MessageCircle className="h-3.5 w-3.5 text-emerald-500" />
+                </div>
+                <div className="mt-2 text-lg font-bold font-mono text-foreground">
+                  {insights.metrics.replies.toLocaleString('id-ID')}
+                </div>
+                <p className="mt-0.5 text-[10px] text-muted-foreground">Balasan &amp; diskusi</p>
+              </div>
+
+              {/* Reposts */}
+              <div className="rounded-xl border border-border bg-muted/20 p-3">
+                <div className="flex items-center justify-between text-muted-foreground">
+                  <span className="text-xs font-semibold">Reposts</span>
+                  <Repeat className="h-3.5 w-3.5 text-purple-500" />
+                </div>
+                <div className="mt-2 text-lg font-bold font-mono text-foreground">
+                  {insights.metrics.reposts.toLocaleString('id-ID')}
+                </div>
+                <p className="mt-0.5 text-[10px] text-muted-foreground">Dibagikan ulang</p>
+              </div>
+
+              {/* Quotes */}
+              <div className="rounded-xl border border-border bg-muted/20 p-3">
+                <div className="flex items-center justify-between text-muted-foreground">
+                  <span className="text-xs font-semibold">Quotes</span>
+                  <Quote className="h-3.5 w-3.5 text-amber-500" />
+                </div>
+                <div className="mt-2 text-lg font-bold font-mono text-foreground">
+                  {insights.metrics.quotes.toLocaleString('id-ID')}
+                </div>
+                <p className="mt-0.5 text-[10px] text-muted-foreground">Dikutip pengguna</p>
+              </div>
+            </div>
+          ) : insights.status === 'scope_missing' ? (
+            <div className="rounded-xl border border-amber-500/20 bg-amber-500/5 p-4 space-y-2">
+              <div className="flex items-start gap-2.5">
+                <ShieldAlert className="h-4 w-4 text-amber-500 shrink-0 mt-0.5" />
+                <div>
+                  <p className="text-xs font-bold text-foreground">
+                    Izin Insight (threads_manage_insights) Belum Diberikan
+                  </p>
+                  <p className="mt-0.5 text-xs text-muted-foreground leading-relaxed">
+                    Akun saat ini hanya terhubung dengan izin dasar. Untuk menampilkan metrik interaksi resmi, lakukan otorisasi ulang di Pengaturan.
+                  </p>
+                </div>
+              </div>
+              <div className="pt-1">
+                <Link
+                  href="/settings"
+                  className="inline-flex items-center gap-1 text-xs font-semibold text-primary underline"
+                >
+                  Hubungkan ulang akun di Pengaturan &rarr;
+                </Link>
+              </div>
+            </div>
+          ) : insights.status === 'not_connected' ? (
+            <div className="rounded-xl border border-border bg-muted/20 p-4 text-xs text-muted-foreground flex items-center justify-between">
+              <span>Akun Threads belum terhubung. Hubungkan untuk memantau metrik.</span>
+              <Link href="/settings" className="font-semibold text-primary underline">
+                Pengaturan &rarr;
+              </Link>
+            </div>
+          ) : (
+            <div className="rounded-xl border border-border bg-muted/20 p-4 text-xs text-muted-foreground">
+              {insights.message || 'Data metrik interaksi belum tersedia dari Threads API.'}
+            </div>
+          )}
+
+          <p className="text-[11px] text-muted-foreground">
+            Catatan: Metrik di atas merupakan agregat akun resmi dari Meta, bukan tren mingguan atau angka per postingan.
+          </p>
+        </section>
       </div>
-
-      {/* System Status Section */}
-      <div className="rounded-2xl border border-border bg-card p-6 shadow-sm">
-        <div className="flex items-center justify-between">
-          <h2 className="text-base font-semibold text-foreground flex items-center gap-2">
-            <Activity className="h-4 w-4 text-primary" />
-            Status Konektivitas & Mesin Otomatisasi
-          </h2>
-          <Link
-            href="/settings"
-            className="text-xs font-medium text-primary hover:underline"
-          >
-            Buka Pengaturan &rarr;
-          </Link>
-        </div>
-        <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-          <div className="rounded-xl border border-border bg-muted/20 p-3.5">
-            <div className="flex items-center gap-2 text-xs font-medium">
-              {account?.is_active && !tokenExpired ? (
-                <>
-                  <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500" />
-                  <span className="text-emerald-500">Akun Threads Terhubung</span>
-                </>
-              ) : account?.is_active && tokenExpired ? (
-                <>
-                  <AlertTriangle className="h-3.5 w-3.5 text-amber-500" />
-                  <span className="text-amber-500">Token Kedaluwarsa</span>
-                </>
-              ) : (
-                <>
-                  <WifiOff className="h-3.5 w-3.5 text-muted-foreground" />
-                  <span className="text-muted-foreground">Threads Belum Terhubung</span>
-                </>
-              )}
-            </div>
-            <p className="mt-1 text-xs text-foreground font-semibold">
-              {account?.username ? `@${account.username}` : 'Belum dihubungkan'}
-            </p>
-            <p className="mt-0.5 text-[11px] text-muted-foreground">
-              {account?.is_active && !tokenExpired
-                ? `${account.granted_scopes?.length ?? 0} izin aktif`
-                : 'Periksa tab Pengaturan'}
-            </p>
-          </div>
-
-          <div className="rounded-xl border border-border bg-muted/20 p-3.5">
-            <div className="flex items-center gap-2 text-xs font-medium">
-              {publishLive ? (
-                <>
-                  <Wifi className="h-3.5 w-3.5 text-emerald-500" />
-                  <span className="text-emerald-500">Mode Live</span>
-                </>
-              ) : (
-                <>
-                  <Activity className="h-3.5 w-3.5 text-blue-500" />
-                  <span className="text-blue-500">Mode Simulasi (Dry-Run)</span>
-                </>
-              )}
-            </div>
-            <p className="mt-1 text-xs text-foreground font-semibold">
-              {publishLive ? 'Publikasi Nyata' : 'Hanya Mencatat Rencana'}
-            </p>
-            <p className="mt-0.5 text-[11px] text-muted-foreground">
-              {publishLive ? 'Post dikirim ke Meta Threads' : 'Aman untuk pengujian'}
-            </p>
-          </div>
-
-          <div className="rounded-xl border border-border bg-muted/20 p-3.5">
-            <div className="flex items-center gap-2 text-xs font-medium">
-              {heartbeatFresh ? (
-                <>
-                  <Activity className="h-3.5 w-3.5 text-emerald-500 animate-pulse" />
-                  <span className="text-emerald-500">Worker Aktif</span>
-                </>
-              ) : heartbeat?.created_at ? (
-                <>
-                  <Clock className="h-3.5 w-3.5 text-amber-500" />
-                  <span className="text-amber-500">Worker Standby</span>
-                </>
-              ) : (
-                <>
-                  <Clock className="h-3.5 w-3.5 text-muted-foreground" />
-                  <span className="text-muted-foreground">Worker Belum Ada Sinyal</span>
-                </>
-              )}
-            </div>
-            <p className="mt-1 text-xs text-foreground font-semibold">
-              {heartbeatFresh
-                ? 'Heartbeat Segar (< 5m)'
-                : heartbeat?.created_at
-                ? formatDateWIB(heartbeat.created_at)
-                : 'Belum terdeteksi'}
-            </p>
-            <p className="mt-0.5 text-[11px] text-muted-foreground">
-              Dipicu oleh Supabase Cron
-            </p>
-          </div>
-
-          <div className="rounded-xl border border-border bg-muted/20 p-3.5">
-            <div className="flex items-center gap-2 text-xs font-medium">
-              {automationActive ? (
-                <>
-                  <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500" />
-                  <span className="text-emerald-500">Otomatisasi Aktif</span>
-                </>
-              ) : (
-                <>
-                  <AlertTriangle className="h-3.5 w-3.5 text-amber-500" />
-                  <span className="text-amber-500">Otomatisasi Dijeda</span>
-                </>
-              )}
-            </div>
-            <p className="mt-1 text-xs text-foreground font-semibold">
-              {automationActive ? 'Siklus Berjalan Normal' : 'Dijeda Sementara'}
-            </p>
-            <p className="mt-0.5 text-[11px] text-muted-foreground">
-              {automationActive ? 'Generasi & posting terjadwal' : 'Tidak ada aksi otomatis'}
-            </p>
-          </div>
-        </div>
-      </div>
-
-      {/* Manual Worker Cycle Verification */}
-      <AutomationTest />
     </div>
   )
 }
