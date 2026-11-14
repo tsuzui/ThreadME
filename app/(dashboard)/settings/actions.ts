@@ -2,246 +2,94 @@
 
 import { revalidatePath } from 'next/cache'
 import { createClient } from '@/lib/supabase/server'
-import type { Database } from '@/types/database'
 
 export interface UpdateSettingsState {
   success?: boolean
   error?: string
+  message?: string
 }
 
-export async function updateAppSettingsAction(
-  _prevState: UpdateSettingsState,
-  formData: FormData
-): Promise<UpdateSettingsState> {
-  try {
-    const supabase = await createClient()
+async function adminClient() {
+  const client = await createClient()
+  const { data: { user }, error } = await client.auth.getUser()
+  if (error || !user) throw new Error('Sesi login telah berakhir. Silakan masuk kembali.')
+  const { data: admin, error: adminError } = await client.rpc('is_threadme_admin')
+  if (adminError || !admin) throw new Error('Akses admin diperlukan.')
+  return client
+}
 
-    // 1. Verifikasi admin
-    const {
-      data: { user },
-      error: authError,
-    } = await supabase.auth.getUser()
+function refreshSettings() {
+  for (const path of ['/settings', '/dashboard', '/calendar']) revalidatePath(path)
+}
 
-    if (authError || !user) {
-      return { error: 'Sesi login telah berakhir. Silakan masuk kembali.' }
-    }
+function minutes(time: string) {
+  if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(time)) throw new Error('Format waktu harus HH:MM (WIB).')
+  const [hour, minute] = time.split(':').map(Number)
+  return hour * 60 + minute
+}
 
-    const { data: isAdmin, error: adminError } = await supabase.rpc(
-      'is_threadme_admin'
-    )
-
-    if (adminError || !isAdmin) {
-      return { error: 'Hanya administrator terdaftar yang dapat mengubah pengaturan.' }
-    }
-
-    // 2. Parse field
-    const postingTimeRaw = (formData.get('posting_time') as string)?.trim()
-    const generationTimeRaw = (formData.get('generation_time') as string)?.trim()
-    const automationEnabled = formData.get('automation_enabled') === 'on'
-    const cooldownDaysRaw = Number(formData.get('topic_rotation_cooldown_days'))
-    const maxRetriesRaw = Number(formData.get('max_generation_retries'))
-    const personaPrompt = (formData.get('persona_prompt') as string)?.trim()
-
-    // Format waktu menjadi HH:MM:SS
-    const formatTime = (time: string, fallback: string) => {
-      if (!time) return fallback
-      const parts = time.split(':')
-      if (parts.length === 2) return `${parts[0].padStart(2, '0')}:${parts[1].padStart(2, '0')}:00`
-      if (parts.length === 3) return `${parts[0].padStart(2, '0')}:${parts[1].padStart(2, '0')}:${parts[2].padStart(2, '0')}`
-      return fallback
-    }
-
-    const postingTime = formatTime(postingTimeRaw, '19:00:00')
-    const generationTime = formatTime(generationTimeRaw, '18:40:00')
-
-    const cooldownDays = isNaN(cooldownDaysRaw) ? 7 : Math.max(1, Math.min(30, cooldownDaysRaw))
-    const maxRetries = isNaN(maxRetriesRaw) ? 2 : Math.max(0, Math.min(5, maxRetriesRaw))
-
-    const updatePayload: Database['public']['Tables']['app_settings']['Update'] = {
-      posting_time: postingTime,
-      generation_time: generationTime,
-      automation_enabled: automationEnabled,
-      image_target_ratio: 0,
-      topic_rotation_cooldown_days: cooldownDays,
-      max_generation_retries: maxRetries,
-      persona_prompt: personaPrompt || null,
-      updated_at: new Date().toISOString(),
-    }
-
-    // 3. Update database
-    const { error: updateError } = await (supabase
-      .from('app_settings') as any)
-      .update(updatePayload)
-      .eq('singleton', true)
-
-    if (updateError) {
-      return { error: `Gagal menyimpan pengaturan: ${updateError.message}` }
-    }
-
-    // Sync primary recurring rule with posting_time & automationEnabled
-    try {
-      const leadMinutes = Math.max(
-        5,
-        Math.min(
-          1439,
-          Math.floor(
-            ((new Date(`1970-01-01T${postingTime}Z`).getTime() -
-              new Date(`1970-01-01T${generationTime}Z`).getTime() +
-              86400000) %
-              86400000) /
-              60000
-          )
-        )
-      )
-
-      await (supabase.from('recurring_rules') as any).upsert(
-        {
-          posting_time: postingTime,
-          generation_lead_minutes: leadMinutes,
-          enabled: automationEnabled,
-          effective_date: new Date().toISOString().slice(0, 10),
-        },
-        { onConflict: 'posting_time' }
-      )
-
-      // Sync slot rutin hari ini jika belum digenerate
-      const todayWIB = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Jakarta' }).format(new Date())
-      const scheduledForDate = new Date(`${todayWIB}T${postingTime}+07:00`).toISOString()
-      const generateAfterDate = new Date(`${todayWIB}T${generationTime}+07:00`).toISOString()
-
-      const { data: todaySlot } = await (supabase.from('schedule_slots') as any)
-        .select('id')
-        .eq('local_date', todayWIB)
-        .eq('source', 'routine')
-        .eq('lifecycle', 'scheduled')
-        .maybeSingle()
-
-      if (todaySlot) {
-        const { data: postExists } = await (supabase.from('content_posts') as any)
-          .select('id')
-          .eq('slot_id', todaySlot.id)
-          .maybeSingle()
-
-        if (!postExists) {
-          await (supabase.from('schedule_slots') as any)
-            .update({
-              scheduled_for: scheduledForDate,
-              generate_after: generateAfterDate,
-              updated_at: new Date().toISOString(),
-            })
-            .eq('id', todaySlot.id)
-        }
-      }
-    } catch {
-      // Non-blocking sync error
-    }
-
-    revalidatePath('/settings')
-    revalidatePath('/dashboard')
-    revalidatePath('/calendar')
-
-    return { success: true }
-  } catch (err: unknown) {
-    const error = err as Error
-    return { error: error.message || 'Terjadi kesalahan sistem saat menyimpan.' }
+function integer(value: FormDataEntryValue | null, min: number, max: number) {
+  const parsed = Number(value)
+  if (typeof value !== 'string' || !value.trim() || !Number.isInteger(parsed) || parsed < min || parsed > max) {
+    throw new Error(`Parameter harus bilangan bulat ${min}–${max}.`)
   }
+  return parsed
 }
 
-export async function addRecurringRuleAction(
-  timeRaw: string,
-  leadMinutes = 20
-): Promise<{ success?: boolean; error?: string }> {
+function failure(error: unknown): UpdateSettingsState {
+  return { error: error instanceof Error ? error.message : 'Gagal menyimpan pengaturan.' }
+}
+
+export async function updateAppSettingsAction(_prev: UpdateSettingsState, form: FormData): Promise<UpdateSettingsState> {
   try {
-    const supabase = await createClient()
-    const { data: { user } } = await supabase.auth.getUser()
-    if (!user) return { error: 'Silakan login kembali.' }
-
-    const { data: isAdmin } = await supabase.rpc('is_threadme_admin')
-    if (!isAdmin) return { error: 'Akses admin diperlukan.' }
-
-    const time = timeRaw.trim()
-    if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(time)) {
-      return { error: 'Format waktu harus HH:MM.' }
-    }
-
-    const postingTime = `${time}:00`
-    const { error: insertError } = await (supabase.from('recurring_rules') as any).insert({
-      posting_time: postingTime,
-      generation_lead_minutes: Math.max(5, Math.min(1439, leadMinutes)),
-      enabled: true,
-      effective_date: new Date().toISOString().slice(0, 10),
+    const client = await adminClient()
+    const generation = String(form.get('generation_time') ?? '').trim()
+    const posting = String(form.get('posting_time') ?? '').trim()
+    const lead = minutes(posting) - minutes(generation)
+    if (lead < 1 || lead > 1439) throw new Error('Generasi harus minimal 1 menit sebelum publikasi pada hari yang sama.')
+    // RPC is owned by migration 012; keep its local signature here until generated DB types are refreshed.
+    const { data, error } = await (client.rpc as Function)('update_threadme_settings', {
+      p_generation_time: generation, p_posting_time: posting,
+      p_enabled: form.get('automation_enabled') === 'on',
+      p_cooldown: integer(form.get('topic_rotation_cooldown_days'), 1, 30),
+      p_retries: integer(form.get('max_generation_retries'), 0, 5),
+      p_persona: String(form.get('persona_prompt') ?? '').trim() || null,
     })
-
-    if (insertError) {
-      if (insertError.code === '23505') {
-        return { error: `Jam posting ${time} WIB sudah ada dalam daftar jadwal rutin.` }
-      }
-      return { error: insertError.message }
-    }
-
-    revalidatePath('/settings')
-    revalidatePath('/calendar')
-    revalidatePath('/dashboard')
-    return { success: true }
-  } catch (err: unknown) {
-    return { error: (err as Error).message }
-  }
+    if (error) throw new Error(error.code === '23505' ? 'Jam ini bentrok dengan jadwal lain. Tidak ada perubahan yang disimpan.' : error.message)
+    refreshSettings()
+    return { success: true, message: data === 'protected'
+      ? 'Pengaturan tersimpan. Jadwal hari ini tetap: sudah diproses, memiliki draf, atau waktu publikasinya telah lewat. Jadwal baru berlaku untuk slot berikutnya.'
+      : data === 'updated' ? 'Pengaturan tersimpan. Slot utama hari ini yang masih kosong ikut diperbarui.'
+      : 'Pengaturan tersimpan. Jadwal baru berlaku saat worker membuat slot berikutnya.' }
+  } catch (error) { return failure(error) }
 }
 
-export async function toggleRecurringRuleAction(
-  ruleId: string,
-  isEnabled: boolean
-): Promise<{ success?: boolean; error?: string }> {
+async function manageRule(args: Record<string, unknown>): Promise<UpdateSettingsState> {
   try {
-    const supabase = await createClient()
-    const { data: { user } } = await supabase.auth.getUser()
-    if (!user) return { error: 'Silakan login kembali.' }
-
-    const { data: isAdmin } = await supabase.rpc('is_threadme_admin')
-    if (!isAdmin) return { error: 'Akses admin diperlukan.' }
-
-    const { error } = await (supabase.from('recurring_rules') as any)
-      .update({ enabled: isEnabled, updated_at: new Date().toISOString() })
-      .eq('id', ruleId)
-
-    if (error) return { error: error.message }
-
-    revalidatePath('/settings')
-    revalidatePath('/calendar')
-    revalidatePath('/dashboard')
+    const client = await adminClient()
+    const { error } = await (client.rpc as Function)('manage_threadme_recurring_rule', args)
+    if (error) throw new Error(error.code === '23503'
+      ? 'Jadwal ini memiliki riwayat slot. Nonaktifkan alih-alih menghapus.'
+      : error.code === '23505' ? 'Jam publikasi ini sudah digunakan jadwal lain.' : error.message)
+    refreshSettings()
     return { success: true }
-  } catch (err: unknown) {
-    return { error: (err as Error).message }
-  }
+  } catch (error) { return failure(error) }
 }
 
-export async function deleteRecurringRuleAction(
-  ruleId: string
-): Promise<{ success?: boolean; error?: string }> {
+export async function addRecurringRuleAction(timeRaw: string, leadMinutes = 20): Promise<UpdateSettingsState> {
   try {
-    const supabase = await createClient()
-    const { data: { user } } = await supabase.auth.getUser()
-    if (!user) return { error: 'Silakan login kembali.' }
-
-    const { data: isAdmin } = await supabase.rpc('is_threadme_admin')
-    if (!isAdmin) return { error: 'Akses admin diperlukan.' }
-
-    const { error } = await (supabase.from('recurring_rules') as any)
-      .delete()
-      .eq('id', ruleId)
-
-    if (error) {
-      if (error.code === '23503') {
-        return { error: 'Jadwal ini sudah memiliki riwayat slot yang terhubung. Nonaktifkan saja alih-alih menghapus.' }
-      }
-      return { error: error.message }
+    const time = timeRaw.trim()
+    if (!Number.isInteger(leadMinutes) || leadMinutes < 1 || leadMinutes > 1439 || leadMinutes > minutes(time)) {
+      throw new Error('Lead AI harus 1–1439 menit, dengan generasi pada hari yang sama.')
     }
+    return await manageRule({ p_operation: 'add', p_time: time, p_lead: leadMinutes })
+  } catch (error) { return failure(error) }
+}
 
-    revalidatePath('/settings')
-    revalidatePath('/calendar')
-    revalidatePath('/dashboard')
-    return { success: true }
-  } catch (err: unknown) {
-    return { error: (err as Error).message }
-  }
+export async function toggleRecurringRuleAction(ruleId: string, enabled: boolean): Promise<UpdateSettingsState> {
+  return manageRule({ p_operation: 'toggle', p_id: ruleId, p_enabled: enabled })
+}
+
+export async function deleteRecurringRuleAction(ruleId: string): Promise<UpdateSettingsState> {
+  return manageRule({ p_operation: 'delete', p_id: ruleId })
 }
