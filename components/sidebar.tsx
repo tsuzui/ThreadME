@@ -1,8 +1,9 @@
 'use client'
 
 import Link from 'next/link'
+import Image from 'next/image'
 import { usePathname } from 'next/navigation'
-import { LayoutDashboard, PenSquare, FileText, Calendar, Sparkles, Settings, ScrollText, Bot, ArrowUpRight } from 'lucide-react'
+import { LayoutDashboard, PenSquare, FileText, Calendar, Sparkles, Settings, ScrollText, ArrowUpRight } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 export const navItems = [
@@ -25,11 +26,9 @@ export function Sidebar() {
 
   return (
     <aside className="fixed inset-y-0 left-0 z-40 hidden w-60 flex-col border-r border-border bg-card md:flex xl:w-64">
-      <Link href="/dashboard" className="flex h-24 items-center gap-3 px-7" aria-label="ThreadMe Dashboard">
-        <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary text-primary-foreground">
-          <Bot className="h-6 w-6" />
-        </span>
-        <span className="text-xl font-bold tracking-tight">ThreadMe<span className="block text-[10px] font-medium tracking-[0.15em] text-muted-foreground">CONTENT WORKSPACE</span></span>
+      <Link href="/dashboard" className="flex h-24 flex-col items-start justify-center gap-2 px-7" aria-label="ThreadMe Dashboard">
+        <Image src="/brand/threadme-logo.webp" alt="ThreadMe" width={960} height={254} priority className="h-auto w-full" />
+        <span className="text-[9px] font-medium tracking-[0.18em] text-muted-foreground">CONTENT WORKSPACE</span>
       </Link>
 
       <div className="px-7 pb-3 pt-4 text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">Workspace</div>

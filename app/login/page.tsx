@@ -2,7 +2,8 @@
 
 import { useActionState } from 'react'
 import { login } from './actions'
-import { ShieldCheck, Lock, Mail, AlertCircle, ArrowRight } from 'lucide-react'
+import { Lock, Mail, AlertCircle, ArrowRight } from 'lucide-react'
+import Image from 'next/image'
 
 export default function LoginPage() {
   const [state, formAction, isPending] = useActionState(
@@ -17,11 +18,9 @@ export default function LoginPage() {
     <div className="flex min-h-screen items-center justify-center bg-background px-4 py-12 sm:px-6 lg:px-8">
       <div className="w-full max-w-md space-y-8 rounded-3xl border border-border bg-card p-6 shadow-xl shadow-primary/5 sm:p-10">
         <div className="text-center">
-          <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-primary/10 text-primary ring-8 ring-primary/5">
-            <ShieldCheck className="h-7 w-7" />
-          </div>
+          <Image src="/brand/threadme-logo.webp" alt="ThreadMe" width={960} height={254} priority className="mx-auto h-auto w-full max-w-[280px]" />
           <h1 className="mt-6 text-2xl font-bold tracking-tight text-foreground">
-            ThreadMe Admin
+            Masuk ke workspace
           </h1>
           <p className="mt-2 text-sm text-muted-foreground">
             Sistem otomatisasi konten Threads pribadi. Akses dibatasi khusus pemilik akun.
