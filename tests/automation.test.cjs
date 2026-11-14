@@ -62,6 +62,7 @@ test('slot-aware tick triggers generation for first unfilled due slot', async ()
     { id: 'slot-1', generate_after: '2026-11-12T07:00:00Z', scheduled_for: '2026-11-12T08:00:00Z', lifecycle: 'scheduled', context: 'trending news' }
   ]
   const mockDb = {
+    rpc: async () => ({ error: null }),
     from: (table) => {
       if (table === 'app_settings') {
         return { select: () => ({ eq: () => ({ single: async () => ({ data: { singleton: true, automation_enabled: true, generation_time: '08:00', posting_time: '09:00' } }) }) }) }

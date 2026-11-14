@@ -4,6 +4,7 @@ import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import {
   LayoutDashboard,
+  PenSquare,
   FileText,
   Calendar,
   Sparkles,
@@ -19,6 +20,11 @@ const navItems = [
     name: 'Dashboard',
     href: '/dashboard',
     icon: LayoutDashboard,
+  },
+  {
+    name: 'Buat Postingan',
+    href: '/posts/new',
+    icon: PenSquare,
   },
   {
     name: 'Daftar Postingan',
@@ -73,7 +79,8 @@ export function Sidebar() {
         {navItems.map((item) => {
           const isActive =
             pathname === item.href ||
-            (item.href !== '/dashboard' && pathname.startsWith(item.href))
+            (item.href !== '/dashboard' && item.href !== '/posts' && pathname.startsWith(item.href)) ||
+            (item.href === '/posts' && pathname.startsWith('/posts/') && pathname !== '/posts/new')
           const Icon = item.icon
 
           return (

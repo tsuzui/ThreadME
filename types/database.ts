@@ -349,8 +349,8 @@ export interface Database {
           run_id: string | null
           social_account_id: string | null
           topic_history_id: string | null
-          scheduled_date: string
-          scheduled_for: string
+          scheduled_date: string | null
+          scheduled_for: string | null
           content: string
           content_type: ContentFormat
           pillar: string
@@ -385,8 +385,8 @@ export interface Database {
           run_id?: string | null
           social_account_id?: string | null
           topic_history_id?: string | null
-          scheduled_date: string
-          scheduled_for: string
+          scheduled_date?: string | null
+          scheduled_for?: string | null
           content: string
           content_type?: ContentFormat
           pillar: string
@@ -421,8 +421,8 @@ export interface Database {
           run_id?: string | null
           social_account_id?: string | null
           topic_history_id?: string | null
-          scheduled_date?: string
-          scheduled_for?: string
+          scheduled_date?: string | null
+          scheduled_for?: string | null
           content?: string
           content_type?: ContentFormat
           pillar?: string
@@ -570,6 +570,7 @@ export interface Database {
     }
     Views: Record<string, never>
     Functions: {
+      materialize_routine_slots: { Args: Record<string, never>; Returns: undefined }
       claim_daily_generation: { Args: { p_date: string; p_lease: string; p_manual: boolean; p_version: string | null }; Returns: boolean }
       finalize_daily_generation: { Args: { p_date: string; p_lease: string; p_version: string | null; p_post: Json; p_history: Json; p_manual: boolean }; Returns: string }
       fail_daily_generation: { Args: { p_date: string; p_lease: string }; Returns: undefined }

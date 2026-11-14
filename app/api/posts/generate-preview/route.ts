@@ -1,10 +1,11 @@
-import { NextResponse } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { runDailyContentEngine } from '@/lib/automation/content-engine'
 
 export const dynamic = 'force-dynamic'
 
-export async function POST() {
+export async function POST(request: NextRequest) {
+  if (request.headers.get('origin') !== request.nextUrl.origin) return NextResponse.json({ error: 'Asal permintaan tidak diizinkan.' }, { status: 403 })
   try {
     const supabase = await createClient()
 

@@ -197,7 +197,7 @@ export function DashboardPreviewAction() {
             {/* Footer Aksi */}
             <div className="flex items-center justify-between pt-2 border-t border-border/60">
               <p className="text-[11px] text-muted-foreground">
-                Draf tersimpan, belum dipublikasikan. {result.postId && <Link href={`/posts/${result.postId}`} className="text-primary underline">Edit teks / tambah gambar</Link>}
+                Preview belum disimpan. <Link href="/posts/new" onClick={() => sessionStorage.setItem('threadme-proposal', result.content)} className="text-primary underline">Edit, tambah gambar, atau jadwalkan</Link>.
               </p>
               <div className="flex items-center gap-2">
                 <button

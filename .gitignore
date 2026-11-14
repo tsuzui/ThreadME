@@ -43,3 +43,6 @@ supabase/.temp
 
 # local testing & tools
 .playwright-mcp/
+.claude/
+
+.vercel

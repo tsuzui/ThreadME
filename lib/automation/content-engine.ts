@@ -48,35 +48,45 @@ export async function runDailyContentEngine(
     throw new Error('Gagal memuat konfigurasi app_settings.')
   }
 
-  let existingPostQuery = supabase.from('content_posts').select('*').eq('scheduled_date', todayWIB)
-  if (options.slotId) {
-    existingPostQuery = existingPostQuery.eq('slot_id', options.slotId)
-  }
-  const { data: existingPost, error: existingError } = await existingPostQuery.maybeSingle()
-  if (existingError) throw new Error('Gagal memeriksa draf hari ini.')
-  if (existingPost) {
-    const metadata = existingPost.generation_metadata as Record<string, unknown> | null
-    if (!options.manualPreview || existingPost.status !== 'ready' || metadata?.manuallyEdited || existingPost.image_storage_path) {
-      throw new Error('Postingan untuk jadwal ini sudah tersedia atau telah diedit manual. Buka kalender untuk melihat atau mengedit draf; generasi tidak menimpanya.')
+  const proposalOnly = !!options.manualPreview && !options.slotId
+  let existingPost: ContentPostRow | null = null
+  let lease = ''
+
+  if (!proposalOnly) {
+    let existingPostQuery = supabase.from('content_posts').select('*').eq('scheduled_date', todayWIB)
+    if (options.slotId) {
+      existingPostQuery = existingPostQuery.eq('slot_id', options.slotId)
+    } else {
+      existingPostQuery = existingPostQuery.is('slot_id', null)
     }
+    const { data: foundPost, error: existingError } = await existingPostQuery.maybeSingle()
+    if (existingError) throw new Error('Gagal memeriksa draf hari ini.')
+    existingPost = foundPost
+    if (existingPost) {
+      const metadata = existingPost.generation_metadata as Record<string, unknown> | null
+      if (existingPost.status !== 'ready' || metadata?.manuallyEdited || existingPost.image_storage_path) {
+        throw new Error('Postingan untuk jadwal ini sudah tersedia atau telah diedit manual. Buka kalender untuk melihat atau mengedit draf; generasi tidak menimpanya.')
+      }
+    }
+
+    lease = randomUUID()
+    const { data: claimed, error: claimError } = options.slotId
+      ? await supabase.rpc('claim_slot_generation', {
+          p_date: todayWIB,
+          p_slot_id: options.slotId,
+          p_lease: lease,
+          p_manual: !!options.manualPreview,
+          p_version: existingPost?.updated_at || null,
+        })
+      : await supabase.rpc('claim_daily_generation', {
+          p_date: todayWIB,
+          p_lease: lease,
+          p_manual: !!options.manualPreview,
+          p_version: existingPost?.updated_at || null,
+        })
+    if (claimError || !claimed) throw new Error('Generasi belum dapat diklaim: proses lain aktif, jadwal belum tiba, atau batas percobaan tercapai.')
   }
 
-  const lease = randomUUID()
-  const { data: claimed, error: claimError } = options.slotId
-    ? await supabase.rpc('claim_slot_generation', {
-        p_date: todayWIB,
-        p_slot_id: options.slotId,
-        p_lease: lease,
-        p_manual: !!options.manualPreview,
-        p_version: existingPost?.updated_at || null,
-      })
-    : await supabase.rpc('claim_daily_generation', {
-        p_date: todayWIB,
-        p_lease: lease,
-        p_manual: !!options.manualPreview,
-        p_version: existingPost?.updated_at || null,
-      })
-  if (claimError || !claimed) throw new Error('Generasi belum dapat diklaim: proses lain aktif, jadwal belum tiba, atau batas percobaan tercapai.')
   try {
   // 2. Muat topik aktif
   const { data: topicsData, error: topicsError } = await supabase
@@ -180,6 +190,19 @@ export async function runDailyContentEngine(
     throw new Error('Gagal menghasilkan konten setelah batas percobaan ulang.')
   }
 
+  // Jika hanya uji coba / proposal manual tanpa slot kaku, kembalikan langsung tanpa menyentuh jadwal
+  if (proposalOnly) {
+    return {
+      success: true,
+      topic: selectedTopic.name,
+      angle: chosenAngle.angle,
+      content: finalContent.content,
+      format: finalContent.format,
+      qualityScore: finalContent.quality_notes.naturalness,
+      qualityNotes: finalContent.quality_notes,
+    }
+  }
+
   // 8. Simpan ke database jika bukan simulasi murni
   // Target waktu posting: hari ini pukul posting_time WIB
   const postingTime = settingsData.posting_time || '19:00:00'
@@ -273,6 +296,7 @@ export async function runDailyContentEngine(
     qualityNotes: finalContent.quality_notes,
   }
   } catch (error) {
+    if (proposalOnly) throw error
     if (options.slotId) {
       await supabase.rpc('fail_slot_generation', { p_date: todayWIB, p_slot_id: options.slotId, p_lease: lease })
     } else {

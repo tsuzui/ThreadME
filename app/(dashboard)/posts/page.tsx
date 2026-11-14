@@ -1,7 +1,7 @@
 import { createClient } from '@/lib/supabase/server'
 import Link from 'next/link'
 import type { Database } from '@/types/database'
-import { FileText, ImageIcon, ExternalLink, Inbox } from 'lucide-react'
+import { FileText, ImageIcon, ExternalLink, Inbox, PlusCircle } from 'lucide-react'
 
 export const dynamic = 'force-dynamic'
 
@@ -13,7 +13,7 @@ export default async function PostsPage() {
   const { data: rawPosts, error } = await supabase
     .from('content_posts')
     .select('*')
-    .order('scheduled_for', { ascending: false })
+    .order('created_at', { ascending: false })
     .limit(50)
 
   const posts = rawPosts as ContentPost[] | null
@@ -26,9 +26,16 @@ export default async function PostsPage() {
             Daftar Postingan
           </h1>
           <p className="mt-1 text-sm text-muted-foreground">
-            Riwayat seluruh konten harian dan slot ad-hoc yang telah dipersiapkan dan dipublikasikan.
+            Riwayat seluruh postingan, draf bebas, dan konten terjadwal.
           </p>
         </div>
+        <Link
+          href="/posts/new"
+          className="inline-flex items-center gap-2 rounded-xl bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground shadow-sm transition hover:bg-primary/90"
+        >
+          <PlusCircle className="h-4 w-4" />
+          Buat Postingan
+        </Link>
       </div>
 
       <div className="rounded-2xl border border-border bg-card shadow-sm overflow-hidden">
@@ -63,20 +70,20 @@ export default async function PostsPage() {
               </thead>
               <tbody className="divide-y divide-border">
                 {posts.map((post) => {
-                  const timeFormatted = new Intl.DateTimeFormat('id-ID', {
+                  const timeFormatted = post.scheduled_for ? new Intl.DateTimeFormat('id-ID', {
                     timeZone: 'Asia/Jakarta',
                     hour: '2-digit',
                     minute: '2-digit',
-                  }).format(new Date(post.scheduled_for))
+                  }).format(new Date(post.scheduled_for)) : null
 
                   return (
                     <tr key={post.id} className="transition-colors hover:bg-muted/30">
                       <td className="whitespace-nowrap px-6 py-4">
                         <div className="font-mono text-xs font-semibold text-foreground">
-                          {post.scheduled_date}
+                          {post.scheduled_date || 'Draf bebas'}
                         </div>
                         <div className="font-mono text-[11px] text-muted-foreground">
-                          {timeFormatted} WIB
+                          {timeFormatted ? `${timeFormatted} WIB` : 'Tanpa jadwal'}
                         </div>
                       </td>
                       <td className="max-w-md px-6 py-4">

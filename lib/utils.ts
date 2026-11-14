@@ -5,8 +5,10 @@ export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs))
 }
 
-export function formatDateWIB(date: Date | string): string {
+export function formatDateWIB(date: Date | string | null | undefined): string {
+  if (!date) return 'Belum dijadwalkan'
   const d = typeof date === 'string' ? new Date(date) : date
+  if (isNaN(d.getTime())) return 'Belum dijadwalkan'
   return new Intl.DateTimeFormat('id-ID', {
     timeZone: 'Asia/Jakarta',
     dateStyle: 'medium',

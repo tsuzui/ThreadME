@@ -21,7 +21,8 @@ import {
   ShieldAlert,
 } from 'lucide-react'
 import Link from 'next/link'
-import { formatDateWIB } from '@/lib/utils'
+import { formatDateWIB, getTodayDateWIB } from '@/lib/utils'
+import { ActivityChart } from './activity-chart'
 import { DashboardPreviewAction } from './preview-action'
 import { getThreadsInsights } from '@/lib/threads/insights'
 
@@ -38,7 +39,7 @@ export default async function DashboardPage() {
   const [settingsResult, publishedResult, readyResult, countResult, latestResult, runResult, accountResult, heartbeatResult, insights] = await Promise.all([
     supabase.from('app_settings').select('*').eq('singleton', true).single(),
     supabase.from('content_posts').select('*').eq('status', 'published').order('published_at', { ascending: false }).limit(1).maybeSingle(),
-    supabase.from('content_posts').select('*').in('status', ['ready', 'generating']).order('scheduled_for', { ascending: true }).limit(1).maybeSingle(),
+    supabase.from('content_posts').select('*').in('status', ['ready', 'generating']).not('scheduled_for', 'is', null).order('scheduled_for', { ascending: true }).limit(1).maybeSingle(),
     supabase.from('content_posts').select('*', { count: 'exact', head: true }).eq('status', 'published').gte('published_at', firstDayOfMonth),
     supabase.from('content_posts').select('*').order('created_at', { ascending: false }).limit(1).maybeSingle(),
     supabase.from('automation_runs').select('*').order('started_at', { ascending: false }).limit(1).maybeSingle(),
@@ -46,6 +47,7 @@ export default async function DashboardPage() {
     supabase.from('system_logs').select('created_at').eq('event', 'automation_heartbeat').order('created_at', { ascending: false }).limit(1).maybeSingle(),
     getThreadsInsights().catch(() => ({ status: 'error' as const, message: 'Tidak dapat memuat insight saat ini.' })),
   ])
+  const activityResult = await supabase.from('content_posts').select('status,scheduled_for,published_at,content_type').or(`scheduled_for.gte.${new Date(Date.now() - 31 * 86400000).toISOString()},published_at.gte.${new Date(Date.now() - 31 * 86400000).toISOString()}`)
   const settings = settingsResult.data as AppSettings | null
   const lastPublishedPost = publishedResult.data as ContentPost | null
   const nextReadyPost = readyResult.data as ContentPost | null
@@ -297,6 +299,8 @@ export default async function DashboardPage() {
           </div>
         </div>
       </div>
+
+      <ActivityChart posts={activityResult.data || []} today={getTodayDateWIB()} unavailable={!!activityResult.error} />
 
       {/* Threads Official Insights Section */}
       <div className="rounded-2xl border border-border bg-card p-6 shadow-sm space-y-4">

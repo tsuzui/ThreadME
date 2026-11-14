@@ -13,6 +13,7 @@ interface HeaderProps {
 
 const navItems = [
   { name: 'Dashboard', href: '/dashboard' },
+  { name: 'Buat Postingan', href: '/posts/new' },
   { name: 'Daftar Postingan', href: '/posts' },
   { name: 'Kalender Konten', href: '/calendar' },
   { name: 'Topic Studio', href: '/topic-studio' },

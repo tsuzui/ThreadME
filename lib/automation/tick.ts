@@ -20,7 +20,8 @@ export async function runAutomationTick() {
     return { state: 'token_refreshed' }
   }
 
-  const nowWIBTime = new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Jakarta', hour: '2-digit', minute: '2-digit', second: '2-digit', hourCycle: 'h23' }).format(new Date())
+  const { error: materializeError } = await db.rpc('materialize_routine_slots')
+  if (materializeError) throw new Error('routine_schedule_unavailable')
 
   // Fetch active slots for generation
   const { data: slots } = await db.from('schedule_slots')
@@ -49,17 +50,9 @@ export async function runAutomationTick() {
     }
   }
 
-  // Fallback: check for posts without slot_id (legacy path)
-  const { data: legacyPost } = await db.from('content_posts').select('*').eq('scheduled_date', today).is('slot_id', null).maybeSingle()
-  if (!legacyPost && nowWIBTime >= settings.generation_time) {
-    await runDailyContentEngine()
-    return { state: 'generated' }
-  }
-
   // Publish: find first due post that is ready or resumable
   const { data: duePosts } = await db.from('content_posts')
     .select('*')
-    .eq('scheduled_date', today)
     .in('status', ['ready', 'publishing'])
     .lte('scheduled_for', new Date().toISOString())
     .order('scheduled_for', { ascending: true })

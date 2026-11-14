@@ -3,7 +3,6 @@ import Link from 'next/link'
 import { getTodayDateWIB } from '@/lib/utils'
 import type { Database } from '@/types/database'
 import { Calendar as CalendarIcon, Clock, Sparkles, CheckCircle2, Plus } from 'lucide-react'
-import { AddSlotButton } from './add-slot-button'
 
 export const dynamic = 'force-dynamic'
 
@@ -66,7 +65,7 @@ export default async function CalendarPage() {
             Jadwal harian rutin &amp; slot tambahan · target default {defaultPostingTime} WIB. Buka draf untuk mengedit teks atau memasukkan konteks viral.
           </p>
         </div>
-        <AddSlotButton />
+        <Link href="/posts/new" className="rounded-xl bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground">Buat Postingan</Link>
       </div>
 
       {error && <p role="alert" className="text-sm text-destructive">Gagal memuat kalender. Silakan muat ulang halaman.</p>}
@@ -100,11 +99,11 @@ export default async function CalendarPage() {
               <div className="mt-3 space-y-2.5">
                 {day.posts.length > 0 ? (
                   day.posts.map((post) => {
-                    const timeStr = new Intl.DateTimeFormat('id-ID', {
+                    const timeStr = post.scheduled_for ? new Intl.DateTimeFormat('id-ID', {
                       timeZone: 'Asia/Jakarta',
                       hour: '2-digit',
                       minute: '2-digit',
-                    }).format(new Date(post.scheduled_for))
+                    }).format(new Date(post.scheduled_for)) : ''
                     return (
                       <div
                         key={post.id}
@@ -173,7 +172,7 @@ export default async function CalendarPage() {
               <span className="text-[10px] text-muted-foreground font-mono">
                 {day.posts.length} slot
               </span>
-              <AddSlotButton defaultDate={day.dateStr} />
+              <Link href="/posts/new" className="font-semibold text-primary hover:underline">Buat Postingan</Link>
             </div>
           </div>
         ))}
