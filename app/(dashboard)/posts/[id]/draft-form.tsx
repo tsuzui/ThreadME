@@ -101,14 +101,14 @@ export function DraftForm({ post }: { post: Post }) {
             )}
           </div>
           <p className="text-xs text-muted-foreground">
-            Masukkan peristiwa atau isu yang ingin diselipkan (misal: &ldquo;gibran mundur dari wapres&rdquo;). AI akan mengolahnya agar nyambung dengan gaya kasual ThreadMe tanpa kaku.
+            Masukkan peristiwa atau isu yang ingin diselipkan (misal: &ldquo;dilema kerja vs passion&rdquo;). AI akan mengolahnya agar nyambung dengan gaya kasual ThreadMe tanpa kaku.
           </p>
           <input
             id="context"
             type="text"
             value={context}
             onChange={e => { setContext(e.target.value); setSuccess(false) }}
-            placeholder="Contoh: gibran mundur dari wapres, atau tren yang lagi ramai..."
+            placeholder="Contoh: dilema kerja vs passion, atau tren yang lagi ramai..."
             maxLength={1000}
             className="w-full rounded-xl border border-border bg-background p-2.5 text-sm focus:outline-primary"
           />

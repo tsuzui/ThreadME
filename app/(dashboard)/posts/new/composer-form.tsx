@@ -20,7 +20,6 @@ import { cn } from '@/lib/utils'
 interface TopicOption {
   id: string
   name: string
-  pillar: string
 }
 
 interface ComposerFormProps {
@@ -41,6 +40,8 @@ export function ComposerForm({
   const [content, setContent] = useState('')
   const [context, setContext] = useState('')
   const [pillar, setPillar] = useState('topik_aktual')
+  const [topicId, setTopicId] = useState('')
+  const selectedTopic = activeTopics.find(topic => topic.id === topicId)
   const [action, setAction] = useState<'draft' | 'schedule' | 'publish_now'>('draft')
   const [date, setDate] = useState(defaultDate)
   const [time, setTime] = useState(defaultTime)
@@ -69,14 +70,24 @@ export function ComposerForm({
     }
   }, [])
 
-  async function generateAutoMix() {
+  async function handleGenerateAI() {
     setAiPending(true)
     setError(null)
     try {
-      const response = await fetch('/api/posts/generate-preview', { method: 'POST' })
+      const response = await fetch('/api/posts/generate-preview', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          topicId: topicId || undefined,
+          context: context.trim() || undefined,
+        }),
+      })
       const data = await response.json()
       if (!response.ok) throw new Error(data.error || 'Gagal membuat usulan.')
       setSuggestion(data.data.content)
+      if (data.data.pillar) {
+        setPillar(data.data.pillar)
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Gagal menghubungi AI.')
     } finally {
@@ -112,6 +123,7 @@ export function ComposerForm({
           context: context.trim(),
           currentContent: content || undefined,
           pillar,
+          topicName: selectedTopic?.name || undefined,
         }),
       })
 
@@ -167,6 +179,7 @@ export function ComposerForm({
       const formData = new FormData()
       formData.set('content', content.trim())
       formData.set('pillar', pillar)
+      if (topicId) formData.set('topicId', topicId)
       if (context.trim()) formData.set('context', context.trim())
       formData.set('action', action)
 
@@ -261,7 +274,15 @@ export function ComposerForm({
           </div>
         </div>
 
-        <button type="button" onClick={generateAutoMix} disabled={aiPending || submitting} className="rounded-xl border border-primary/30 px-4 py-2 text-sm font-semibold text-primary disabled:opacity-50">{aiPending ? 'AI sedang meracik...' : 'Generate Otomatis via Auto Mix'}</button>
+        <div className="space-y-2">
+          <label htmlFor="topic" className="block text-xs font-medium">Topik pilihan</label>
+          <select id="topic" value={topicId} onChange={e => { setTopicId(e.target.value); setSuggestion(null) }} disabled={aiPending || submitting} className="w-full rounded-xl border border-input bg-background px-3 py-2 text-sm">
+            <option value="">Pilih topik untuk bantuan AI</option>
+            {activeTopics.map(topic => <option key={topic.id} value={topic.id}>{topic.name}</option>)}
+          </select>
+          {!activeTopics.length && <p className="text-xs text-muted-foreground">Belum ada topik aktif. Tambahkan atau aktifkan topik di Topic Studio.</p>}
+        </div>
+        <button type="button" onClick={handleGenerateAI} disabled={aiPending || submitting || !topicId} className="rounded-xl border border-primary/30 px-4 py-2 text-sm font-semibold text-primary disabled:opacity-50">{aiPending ? 'AI sedang meracik...' : 'Generate dari Topik Pilihan'}</button>
         <div className="space-y-3 pt-1">
           <div>
             <label htmlFor="context" className="block text-xs font-medium text-foreground mb-1">
@@ -273,7 +294,7 @@ export function ComposerForm({
                 type="text"
                 value={context}
                 onChange={(e) => setContext(e.target.value)}
-                placeholder='Contoh: "gibran aja tau kapan harus mundur, masa lu enggak"'
+                placeholder='Contoh: "tips produktivitas kerja remote", "dilema karier vs passion", "tren teknologi terkini"'
                 className="flex-1 rounded-xl border border-input bg-background px-3.5 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
                 maxLength={1000}
                 disabled={submitting}
@@ -301,18 +322,18 @@ export function ComposerForm({
 
           {activeTopics.length > 0 && (
             <div className="flex flex-wrap items-center gap-1.5 pt-1">
-              <span className="text-[11px] text-muted-foreground font-medium mr-1">Rekomendasi Pilar:</span>
-              {activeTopics.slice(0, 4).map((t) => (
+              <span className="text-[11px] text-muted-foreground font-medium mr-1">Pilih Cepat:</span>
+              {activeTopics.slice(0, 5).map((t) => (
                 <button
                   key={t.id}
                   type="button"
                   onClick={() => {
-                    setPillar(t.pillar)
-                    if (!context) setContext(t.name)
+                    setTopicId(t.id)
+                    setSuggestion(null)
                   }}
                   className={cn(
                     'rounded-lg px-2.5 py-1 text-xs transition border',
-                    pillar === t.pillar
+                    topicId === t.id
                       ? 'border-primary/40 bg-primary/10 text-primary font-semibold'
                       : 'border-border bg-muted/40 text-muted-foreground hover:bg-muted hover:text-foreground'
                   )}

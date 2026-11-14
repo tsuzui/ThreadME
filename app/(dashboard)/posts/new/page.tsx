@@ -19,9 +19,10 @@ export default async function NewPostPage() {
   // Ambil daftar pilar / topik aktif untuk rekomendasi
   const { data: topics } = await supabase
     .from('content_topics')
-    .select('id, name, pillar')
+    .select('id, name')
     .eq('is_active', true)
-    .limit(10)
+    .order('name')
+    .limit(1000)
 
   const todayWIB = getTodayDateWIB()
   const defaultTime = (settings?.posting_time || '19:00:00').slice(0, 5)

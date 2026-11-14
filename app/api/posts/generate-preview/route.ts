@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { z } from 'zod'
 import { createClient } from '@/lib/supabase/server'
 import { runDailyContentEngine } from '@/lib/automation/content-engine'
 
@@ -33,14 +34,38 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // 2. Jalankan Content Engine dalam mode manual preview
+    // 2. Baca payload opsional (topicId / context) jika ada
+    let forcedTopicId: string | undefined = undefined
+    let context: string | undefined = undefined
+    if (request.headers.get('content-type')?.includes('application/json')) {
+      try {
+        const body = await request.json()
+        const parsed = z.object({
+          topicId: z.string().uuid('ID topik harus UUID valid.').optional(),
+          context: z.string().trim().max(1000, 'Konteks maksimal 1000 karakter.').optional(),
+        }).safeParse(body)
+        if (!parsed.success) {
+          return NextResponse.json({ error: parsed.error.issues[0].message }, { status: 400 })
+        }
+        forcedTopicId = parsed.data.topicId
+        context = parsed.data.context
+      } catch {
+        return NextResponse.json({ error: 'Format JSON tidak valid.' }, { status: 400 })
+      }
+    }
+
+    // 3. Jalankan Content Engine dalam mode manual preview
     const result = await runDailyContentEngine({
       manualPreview: true,
+      forcedTopicId,
+      context,
     })
 
     return NextResponse.json({
       success: true,
-      message: 'Draf konten berhasil digenerate melalui Topic Studio Auto Mix.',
+      message: forcedTopicId
+        ? `Draf konten berhasil digenerate berdasarkan topik pilihan.`
+        : 'Draf konten berhasil digenerate melalui Topic Studio Auto Mix.',
       data: result,
     })
   } catch (error: unknown) {

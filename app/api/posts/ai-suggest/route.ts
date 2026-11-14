@@ -10,6 +10,7 @@ const suggestSchema = z.object({
   context: z.string().trim().min(3, 'Konteks minimal 3 karakter.').max(1000, 'Konteks maksimal 1000 karakter.'),
   currentContent: z.string().trim().max(1000).optional(),
   pillar: z.string().trim().max(100).optional(),
+  topicName: z.string().trim().max(200).optional(),
 })
 
 export async function POST(request: NextRequest) {
@@ -33,18 +34,19 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: parsed.error.issues[0].message }, { status: 400 })
     }
 
-    const { context, currentContent, pillar } = parsed.data
+    const { context, currentContent, pillar, topicName } = parsed.data
     const textProvider = getTextAIProvider()
 
     const userPrompt = `Tugas: Buat atau sesuaikan 1 postingan Threads dalam bahasa Indonesia kasual santai (gaya khas ThreadMe) menggunakan konteks berikut.
 
 KONTEKS / ISU VIRAL DARI PENGGUNA:
 "${context}"
+${topicName ? `\nTOPIK UTAMA: "${topicName}"` : ''}
 ${currentContent ? `\nDRAF TEKS SAAT INI (sebagai acuan):\n"${currentContent}"` : ''}
 ${pillar ? `\nPILAR / TEMA: ${pillar}` : ''}
 
 PETUNJUK:
-- Bawa konteks tersebut sebagai analogi, sudut pandang jenaka, atau sindiran halus yang sangat relate dengan kehidupan sehari-hari (contoh analogi: "gibran aja tau kapan harus mundur, masa lu enggak").
+- Bawa konteks tersebut sebagai analogi, sudut pandang reflektif, atau sindiran jenaka yang sangat relate dengan kehidupan sehari-hari (contoh: analogi kerjaan, overthinking, pertemanan, rutinitas).
 - Tetap gunakan gaya santai, singkat (1-3 kalimat, 20-300 karakter), tidak kaku seperti berita.
 - Jangan gunakan kutipan formal, kata mutiara klise, atau pertanyaan retoris di akhir.
 

@@ -55,7 +55,7 @@ export function buildDailyUserPrompt(ctx: DailyGenerationContext): string {
     : ''
 
   const manualContextSection = ctx.manualContext
-    ? `\nKONTEKS TERTENTU / ISU VIRAL DARI PENGGUNA:\n"${ctx.manualContext}"\n(PENTING: Masukkan konteks ini sebagai analogi, sudut pandang, atau selipan humor yang pas secara natural dengan topik "${ctx.topic.name}", tanpa kaku atau terkesan mengutip berita resmi. Contoh gaya: 'gibran aja tau kapan harus mundur, masa lu enggak').`
+    ? `\nKONTEKS TERTENTU / ISU VIRAL DARI PENGGUNA:\n"${ctx.manualContext}"\n(PENTING: Masukkan konteks ini sebagai analogi, sudut pandang, atau selipan humor yang pas secara natural dengan topik "${ctx.topic.name}", tanpa kaku atau terkesan mengutip berita resmi).`
     : ''
 
   return `Buat 1 postingan Threads harian untuk ThreadMe hari ini:

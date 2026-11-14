@@ -74,28 +74,21 @@ test('slot-aware tick triggers generation for first unfilled due slot', async ()
         return { select: () => ({ eq: () => ({ maybeSingle: async () => ({ data: { id: 'acc-1', token_expires_at: new Date(Date.now() + 30 * 86400000).toISOString(), last_token_refresh_at: null, connected_at: new Date().toISOString() } }) }) }) }
       }
       if (table === 'schedule_slots') {
-        return {
-          select: () => ({
-            eq: () => ({
-              eq: () => ({
-                lte: () => ({
-                  order: () => ({
-                    limit: async () => ({ data: fakeSlots })
-                  })
-                })
-              })
-            })
-          })
+        const chain = {
+          eq: () => chain,
+          lte: () => chain,
+          gte: () => chain,
+          order: () => chain,
+          limit: async () => ({ data: fakeSlots }),
         }
+        return { select: () => chain }
       }
       if (table === 'content_posts') {
-        return {
-          select: () => ({
-            eq: () => ({
-              in: async () => ({ data: [] }) // no existing posts for slot-1
-            })
-          })
+        const postChain = {
+          eq: () => postChain,
+          in: async () => ({ data: [] }),
         }
+        return { select: () => postChain }
       }
       throw new Error(`Unexpected table: ${table}`)
     }
@@ -134,7 +127,7 @@ test('ai-suggest route requires admin authentication and returns suggestion', as
       getTextAIProvider: () => ({
         generate: async () => ({
           structuredContent: {
-            content: 'gibran aja tau kapan harus mundur, masa lu enggak',
+            content: 'kerja remote itu enak sampai lu sadar seharian ga keluar rumah',
             pillar: 'humor_dan_meme'
           }
         })
@@ -154,10 +147,10 @@ test('ai-suggest route requires admin authentication and returns suggestion', as
   const success = await POST({
     headers: { get: (h) => h === 'origin' ? 'https://threadme.app' : null },
     nextUrl: { origin: 'https://threadme.app' },
-    json: async () => ({ context: 'gibran mundur dari wapres' }),
+    json: async () => ({ context: 'dilema kerja remote' }),
   })
   assert.equal(success.body.success, true)
-  assert.equal(success.body.suggestion, 'gibran aja tau kapan harus mundur, masa lu enggak')
+  assert.equal(success.body.suggestion, 'kerja remote itu enak sampai lu sadar seharian ga keluar rumah')
 })
 
 test('threads insights detects missing scope gracefully', async () => {

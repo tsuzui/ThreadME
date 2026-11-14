@@ -16,6 +16,7 @@ const createSchema = z.object({
   date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Format tanggal YYYY-MM-DD tidak valid.').optional(),
   time: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, 'Format waktu HH:MM tidak valid.').optional(),
   alt: z.string().trim().max(500, 'Deskripsi gambar maksimal 500 karakter.').optional(),
+  topicId: z.string().uuid().optional().nullable(),
 })
 
 export async function POST(request: NextRequest) {
@@ -57,6 +58,7 @@ export async function POST(request: NextRequest) {
         date: formData.get('date') || undefined,
         time: formData.get('time') || undefined,
         alt: formData.get('alt') || undefined,
+        topicId: formData.get('topicId') || undefined,
       }
       const file = formData.get('image')
       if (file instanceof File && file.size > 0) {
@@ -147,6 +149,7 @@ export async function POST(request: NextRequest) {
       content: input.content,
       content_type: imageStoragePath ? 'image' : 'text',
       pillar: input.pillar || 'topik_aktual',
+      topic_id: input.topicId || null,
       context: input.context || null,
       image_storage_path: imageStoragePath,
       image_public_url: imagePublicUrl,

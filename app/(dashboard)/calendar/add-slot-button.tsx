@@ -112,7 +112,7 @@ export function AddSlotButton({ defaultDate }: { defaultDate?: string }) {
                   rows={3}
                   value={context}
                   onChange={(e) => setContext(e.target.value)}
-                  placeholder="Contoh: gibran mundur dari wapres, atau kejadian yang lagi viral..."
+                  placeholder="Contoh: fenomena hustle culture, dilema kerja vs passion, atau kejadian viral..."
                   className="w-full rounded-xl border border-border bg-background p-2.5 text-xs focus:outline-primary"
                 />
                 <p className="mt-1 text-[11px] text-muted-foreground">

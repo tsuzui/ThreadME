@@ -115,14 +115,23 @@ export async function runDailyContentEngine(
     .map((h) => h.angle_fingerprint)
     .filter(Boolean) as string[]
 
-  // 4. Pilih topik via Auto Mix
+  // 4. Pilih topik: gunakan forcedTopicId jika disediakan, atau via Auto Mix
   const activeTopics = topicsData as ContentTopic[]
-  const topicSelection = selectTopicAutoMix(
-    activeTopics,
-    usageHistory,
-    settingsData.topic_rotation_cooldown_days ?? 7
-  )
-  const selectedTopic = topicSelection.selectedTopic
+  let selectedTopic: ContentTopic
+  if (options.forcedTopicId) {
+    const forced = activeTopics.find((t) => t.id === options.forcedTopicId)
+    if (!forced) {
+      throw new Error('Topik yang dipilih tidak ditemukan atau sedang tidak aktif.')
+    }
+    selectedTopic = forced
+  } else {
+    const topicSelection = selectTopicAutoMix(
+      activeTopics,
+      usageHistory,
+      settingsData.topic_rotation_cooldown_days ?? 7
+    )
+    selectedTopic = topicSelection.selectedTopic
+  }
 
   // 5. Generate kandidat angle & pilih yang terkuat
   const angleSelection = generateCandidateAngles(

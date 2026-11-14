@@ -1,6 +1,7 @@
 import { createClient } from '@/lib/supabase/server'
 import type { Database } from '@/types/database'
-import { Sparkles, Sliders, Shield, Tag, Star, Clock } from 'lucide-react'
+import { Sliders } from 'lucide-react'
+import { TopicManager } from './topic-manager'
 
 export const dynamic = 'force-dynamic'
 
@@ -87,73 +88,8 @@ export default async function TopicStudioPage() {
         </div>
       </div>
 
-      {/* Topic Library */}
-      <div className="space-y-4">
-        <div className="flex items-center justify-between">
-          <h2 className="text-lg font-semibold text-foreground flex items-center gap-2">
-            <Tag className="h-4 w-4 text-primary" />
-            Perpustakaan Topik ({topics.length})
-          </h2>
-          <span className="text-xs text-muted-foreground">
-            8 Topik Bawaan Sistem terpasang dari migrasi
-          </span>
-        </div>
-
-        {error ? (
-          <div className="rounded-2xl border border-destructive/30 bg-destructive/10 p-6 text-sm text-destructive">
-            Gagal memuat topik: {error.message}
-          </div>
-        ) : (
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {topics.map((topic) => (
-              <div
-                key={topic.id}
-                className="flex flex-col justify-between rounded-2xl border border-border bg-card p-5 shadow-sm transition-all hover:border-border/80"
-              >
-                <div>
-                  <div className="flex items-center justify-between gap-2">
-                    <h3 className="font-bold text-foreground text-base">
-                      {topic.name}
-                    </h3>
-                    <div className="flex items-center gap-1.5">
-                      <span className="inline-flex items-center gap-1 rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-semibold text-primary">
-                        <Shield className="h-2.5 w-2.5" />
-                        {topic.source_type}
-                      </span>
-                      <span
-                        className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${
-                          topic.is_active
-                            ? 'bg-emerald-500/10 text-emerald-500'
-                            : 'bg-muted text-muted-foreground'
-                        }`}
-                      >
-                        {topic.is_active ? 'Aktif' : 'Nonaktif'}
-                      </span>
-                    </div>
-                  </div>
-
-                  <p className="mt-2 text-xs text-muted-foreground leading-relaxed">
-                    {topic.description}
-                  </p>
-                </div>
-
-                <div className="mt-5 border-t border-border pt-3 flex items-center justify-between text-xs text-muted-foreground font-mono">
-                  <span className="flex items-center gap-1">
-                    <Star className="h-3 w-3 text-amber-500" />
-                    Prioritas {topic.priority}/5
-                  </span>
-                  <span className="flex items-center gap-1">
-                    <Clock className="h-3 w-3" />
-                    {topic.last_selected_at
-                      ? new Date(topic.last_selected_at).toLocaleDateString('id-ID')
-                      : 'Belum terpakai'}
-                  </span>
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
+      {/* Topic Library with CRUD Manager */}
+      <TopicManager initialTopics={topics} loadError={error ? error.message : null} />
     </div>
   )
 }

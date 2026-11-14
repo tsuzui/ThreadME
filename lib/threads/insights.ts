@@ -13,10 +13,20 @@ export interface ThreadsMetricItem {
   id?: string
 }
 
+export interface ThreadsProfile {
+  id: string
+  username: string
+  name?: string
+  threads_profile_picture_url?: string
+  threads_biography?: string
+  followers_count?: number
+}
+
 export interface ThreadsInsightsData {
   status: 'ok' | 'scope_missing' | 'not_connected' | 'error'
   message?: string
   cachedAt?: string
+  profile?: ThreadsProfile
   metrics?: {
     views: number
     likes: number
@@ -44,7 +54,8 @@ const insightResponseSchema = z.object({
           value: z.number(),
           end_time: z.string().optional(),
         })
-      ),
+      ).optional(),
+      total_value: z.object({ value: z.number() }).optional(),
       title: z.string().optional(),
       description: z.string().optional(),
     })
@@ -93,29 +104,69 @@ export async function getThreadsInsights(forceRefresh = false): Promise<ThreadsI
     const config = getThreadsConfig()
     const token = decryptToken(account.encrypted_access_token, account.external_user_id)
     const metricsParam = 'views,likes,replies,reposts,quotes'
-    const url = new URL(`/${config.version}/${account.external_user_id}/threads_insights`, config.base)
-    url.searchParams.set('metric', metricsParam)
+    const insightsUrl = new URL(`/${config.version}/${account.external_user_id}/threads_insights`, config.base)
+    insightsUrl.searchParams.set('metric', metricsParam)
 
-    const response = await fetch(url.toString(), {
-      method: 'GET',
-      headers: {
-        Authorization: `Bearer ${token}`,
-      },
-      cache: 'no-store',
-      signal: AbortSignal.timeout(15_000),
-    })
+    const followersUrl = new URL(`/${config.version}/${account.external_user_id}/threads_insights`, config.base)
+    followersUrl.searchParams.set('metric', 'followers_count')
 
-    const json = await response.json()
+    const meUrl = new URL(`/${config.version}/me`, config.base)
+    meUrl.searchParams.set('fields', 'id,username,name,threads_profile_picture_url,threads_biography')
 
-    if (!response.ok || json.error) {
+    const headers = { Authorization: `Bearer ${token}` }
+
+    const [insightsRes, followersRes, meRes] = await Promise.allSettled([
+      fetch(insightsUrl.toString(), { method: 'GET', headers, cache: 'no-store', signal: AbortSignal.timeout(15_000) }),
+      fetch(followersUrl.toString(), { method: 'GET', headers, cache: 'no-store', signal: AbortSignal.timeout(15_000) }),
+      fetch(meUrl.toString(), { method: 'GET', headers, cache: 'no-store', signal: AbortSignal.timeout(15_000) }),
+    ])
+
+    let profile: ThreadsProfile | undefined = undefined
+    if (meRes.status === 'fulfilled' && meRes.value.ok) {
+      const meJson = await meRes.value.json()
+      if (meJson && !meJson.error) {
+        profile = {
+          id: meJson.id,
+          username: meJson.username || account.username || 'threads',
+          name: meJson.name,
+          threads_profile_picture_url: meJson.threads_profile_picture_url,
+          threads_biography: meJson.threads_biography,
+        }
+      }
+    }
+
+    let followersCount: number | undefined = undefined
+    if (followersRes.status === 'fulfilled' && followersRes.value.ok) {
+      const folJson = await followersRes.value.json()
+      const parsedFol = insightResponseSchema.safeParse(folJson)
+      if (parsedFol.success && parsedFol.data.data.length > 0) {
+        const item = parsedFol.data.data[0]
+        followersCount = item.total_value?.value ?? item.values?.[item.values.length - 1]?.value ?? 0
+      }
+    }
+
+    if (profile && followersCount !== undefined) {
+      profile.followers_count = followersCount
+    }
+
+    if (insightsRes.status !== 'fulfilled' || !insightsRes.value.ok) {
+      return {
+        status: 'error',
+        message: 'Metrik Threads belum dapat dimuat. Coba muat ulang nanti.',
+        cachedAt: new Date().toISOString(),
+        profile,
+      }
+    }
+
+    const json = await insightsRes.value.json()
+    if (json.error) {
       const errMsg = json.error?.message || 'Gagal memuat insight dari Threads API.'
-      console.warn('threads_insights_error', { status: response.status, error: json.error })
-      return { status: 'error', message: errMsg }
+      return { status: 'error', message: errMsg, profile }
     }
 
     const parsed = insightResponseSchema.safeParse(json)
     if (!parsed.success) {
-      return { status: 'error', message: 'Format data insight Threads tidak dikenali.' }
+      return { status: 'error', message: 'Format data insight Threads tidak dikenali.', profile }
     }
 
     const metricMap: Record<string, number> = {
@@ -127,19 +178,21 @@ export async function getThreadsInsights(forceRefresh = false): Promise<ThreadsI
     }
 
     for (const item of parsed.data.data) {
-      const latestValue = item.values[item.values.length - 1]?.value ?? 0
+      const latestValue = item.total_value?.value ?? item.values?.[item.values.length - 1]?.value ?? 0
       metricMap[item.name] = latestValue
     }
 
     const resultData: ThreadsInsightsData = {
       status: 'ok',
       cachedAt: new Date().toISOString(),
+      profile,
       metrics: {
         views: metricMap.views || 0,
         likes: metricMap.likes || 0,
         replies: metricMap.replies || 0,
         reposts: metricMap.reposts || 0,
         quotes: metricMap.quotes || 0,
+        followersCount,
       },
     }
 

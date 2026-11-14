@@ -23,12 +23,13 @@ export async function runAutomationTick() {
   const { error: materializeError } = await db.rpc('materialize_routine_slots')
   if (materializeError) throw new Error('routine_schedule_unavailable')
 
-  // Fetch active slots for generation
+  // Fetch active slots for generation (within 24 hours window)
+  const oneDayAgo = new Date(Date.now() - 86_400_000).toISOString()
   const { data: slots } = await db.from('schedule_slots')
-    .select('id, generate_after, scheduled_for, lifecycle, context')
-    .eq('local_date', today)
+    .select('id, generate_after, scheduled_for, lifecycle, context, local_date')
     .eq('lifecycle', 'scheduled')
     .lte('generate_after', new Date().toISOString())
+    .gte('scheduled_for', oneDayAgo)
     .order('scheduled_for', { ascending: true })
     .limit(5)
 
@@ -37,7 +38,6 @@ export async function runAutomationTick() {
     const slotIds = slots.map(s => s.id)
     const { data: existingPosts } = await db.from('content_posts')
       .select('slot_id')
-      .eq('scheduled_date', today)
       .in('slot_id', slotIds)
 
     const filledSlotIds = new Set((existingPosts || []).map(p => p.slot_id))
